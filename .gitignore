@@ -1,0 +1,7 @@
+# 이 저장소에는 대시보드가 참조하는 CSS/JS 자산만 올린다.
+# (미수금 데이터가 들어있는 html/매크로 파일, 그리고 상위 폴더로 되돌아가는
+#  심볼릭 링크 폴더가 실수로 포함되지 않도록 전부 제외한 뒤 필요한 파일만 허용)
+*
+!.gitignore
+!dashboard-style.css
+!dashboard-script.js
