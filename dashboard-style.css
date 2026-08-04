@@ -649,6 +649,18 @@ body {
   .cell-company { width: 120px; }
   .detail-table col.col-company { width: 120px; }
 
+  /* 거래처 열 고정(엑셀 틀고정처럼) - 나머지 열만 좌우로 스와이프해서 봄 */
+  .detail-table th.head-company,
+  .detail-table td.cell-company {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    box-shadow: 2px 0 4px -2px rgba(0,0,0,.15); /* 고정된 열이라는 걸 시각적으로 표시 */
+  }
+  /* 스크롤되는 다른 열이 고정된 열 밑으로 비쳐 보이지 않도록 불투명 배경 필수 */
+  .detail-table td.cell-company { background: #F4F7FC; }
+  .detail-table th.head-company { background: #E3EBF8; }
+
   /* 자금 특이사항 - 컬럼 폭 축소해서 거래처명에 공간 더 주기 */
   .fund-issue-date   { width: 56px; font-size: 10px; }
   .fund-issue-type   { width: 38px; font-size: 9px; }
