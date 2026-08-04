@@ -343,12 +343,6 @@ body {
 .days-text { font-size: 10px; color: var(--회색글자); }
 .days-text.warning  { color: #E85D26; font-weight: 600; }
 .days-text.critical { color: #1A2332; font-weight: 700; }
-@media (max-width: 900px) {
-  .main-wrap { flex-direction: column; }
-  .left-panel, .right-panel { width: 100%; }
-  #ledger-panel { width: 100%; }
-}
-
 /* ══════════════════════════════════════════
    거래처 원장 스타일
    ══════════════════════════════════════════ */
@@ -588,4 +582,94 @@ body {
   font-size: 12px;
   gap: 8px;
   opacity: 0.6;
+}
+
+/* ══════════════════════════════════════════
+   모바일 반응형 (900px 이하)
+   PC 화면(위 스타일)은 그대로 두고, 좁은 화면에서만 아래 내용이 덮어씀.
+   이 블록은 파일 맨 끝에 있어야 함 - 그래야 원장/테이블 등 뒤에 정의된
+   스타일보다 우선순위(소스 순서)에서 앞서서 실제로 적용됨.
+   ══════════════════════════════════════════ */
+@media (max-width: 900px) {
+  /* 좌우 분할 → 위아래로 쌓기 */
+  .main-wrap { flex-direction: column; }
+  .left-panel, .right-panel { width: 100%; min-width: 0; }
+  .left-panel { padding: 14px 12px 30px; }
+  .right-panel { padding: 14px 12px; border-left: none; border-top: 8px solid var(--배경색); }
+
+  /* 상단 헤더 */
+  .header { padding: 8px 14px; height: auto; flex-wrap: wrap; gap: 6px; }
+  .header-title { font-size: 14px; }
+  .header-sub { display: none; }
+  .header-right { gap: 6px; }
+  .header-badge { padding: 3px 8px; font-size: 10px; }
+
+  /* 담당자/결제조건/위험도 필터 바 */
+  .filter-bar { padding: 8px 10px; gap: 6px; }
+  .filter-label { font-size: 10px; }
+  .filter-btn { padding: 3px 8px; font-size: 11px; }
+  .status-bar { padding: 8px 10px; }
+  .status-label, .status-tag { font-size: 10px; }
+
+  /* KPI 카드 4개 → 2열 */
+  .kpi-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .kpi-card { padding: 12px 14px; }
+  .kpi-value { font-size: 18px; }
+  .kpi-value.large { font-size: 20px; }
+  .kpi-title, .kpi-sub { font-size: 10px; }
+
+  /* 차트 2개: 좌우 → 위아래로 */
+  #chart-all, #chart-manager { flex-direction: column; }
+  .chart-wrap { height: 180px; }
+
+  /* 결제조건/미수 상세내역 헤더 바 - 128px 정렬 그리드 대신 세로로 쌓기 */
+  .column-header { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 8px 12px; }
+  .col-header-paytype { border-right: none; padding-right: 0; }
+  .col-header-detail { padding-left: 0; }
+
+  /* 결제조건 사이드바 - 세로 막대 대신 위쪽 가로 바로 */
+  .paytype-row { flex-direction: column; }
+  .paytype-sidebar {
+    width: 100%;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    border-right: none;
+    border-bottom: 1px solid var(--테두리);
+    padding: 8px 12px;
+  }
+  .paytype-sidebar-title { font-size: 12px; }
+  .paytype-sidebar-count { font-size: 10px; }
+  .paytype-sidebar-total { font-size: 12px; margin-left: auto; }
+
+  /* 미수 상세 테이블 - 컬럼이 많아서 옆으로 스크롤 */
+  .paytype-body { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .detail-table { font-size: 10px; }
+  .cell-company { width: 120px; }
+  .detail-table col.col-company { width: 120px; }
+
+  /* 자금 특이사항 - 컬럼 폭 축소해서 거래처명에 공간 더 주기 */
+  .fund-issue-date   { width: 56px; font-size: 10px; }
+  .fund-issue-type   { width: 38px; font-size: 9px; }
+  .fund-issue-amount { width: 72px; font-size: 10px; }
+  .fund-issue-note   { padding-left: 64px; }
+
+  /* 거래처 원장 (오른쪽 패널 클릭 시 전체화면으로 덮는 오버레이) */
+  #ledger-panel { width: 100%; padding: 14px 12px; }
+  .ledger-company-name { font-size: 14px; }
+  .ledger-summary { gap: 6px; }
+  .ledger-sum-item { padding: 8px 10px; }
+  .ledger-sum-label { font-size: 9px; }
+  .ledger-sum-value { font-size: 12px; }
+  .ledger-tabs { gap: 4px; }
+  .ledger-tab { padding: 4px 10px; font-size: 11px; }
+  .ledger-date-filter { gap: 4px; }
+
+  /* 매출/입금 분리 뷰 - 좌우 고정폭 분할 대신 위아래로 */
+  .ledger-split-wrap { flex-direction: column; }
+  .ledger-split-panel.deposit-panel { flex: 1; }
+
+  /* 원장 테이블(날짜순 통합 등도 컬럼이 많아 옆으로 스크롤) */
+  .ledger-table { font-size: 10px; }
 }
