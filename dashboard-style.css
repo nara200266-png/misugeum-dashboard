@@ -611,12 +611,13 @@ body {
   .status-bar { padding: 8px 10px; }
   .status-label, .status-tag { font-size: 10px; }
 
-  /* KPI 카드 4개 → 2열 */
-  .kpi-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
-  .kpi-card { padding: 12px 14px; }
-  .kpi-value { font-size: 18px; }
-  .kpi-value.large { font-size: 20px; }
-  .kpi-title, .kpi-sub { font-size: 10px; }
+  /* KPI 카드 4개 → 강제 1줄(4열), 캡처용으로 폰트·여백 극단 축소 */
+  .kpi-grid { grid-template-columns: repeat(4, 1fr); gap: 4px; }
+  .kpi-card { padding: 6px 5px; border-left-width: 3px; }
+  .kpi-value { font-size: 12px; letter-spacing: -0.5px; }
+  .kpi-value.large { font-size: 12px; }
+  .kpi-title { font-size: 7px; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .kpi-sub { font-size: 7px; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
   /* 차트 2개: 좌우 → 위아래로 */
   #chart-all, #chart-manager { flex-direction: column; }
@@ -647,19 +648,24 @@ body {
      폰트·여백을 극한까지 줄여서 모든 열이 한 화면 너비 안에 다 들어오게 함 */
   .detail-table { font-size: 8px; table-layout: fixed; }
   .detail-table th, .detail-table td { padding: 1px 2px; white-space: nowrap; }
-  .detail-table col.col-company { width: 62px; }
-  .detail-table col.col-date   { width: 50px; }
-  .detail-table col.col-sale   { width: 50px; }
-  .detail-table col.col-paid   { width: 44px; }
-  .detail-table col.col-misoo  { width: 50px; }
-  .detail-table col.col-risk   { width: 26px; }
-  .detail-table col.col-days   { width: 28px; }
-  .cell-company { width: 62px; padding: 2px 3px; }
+  .detail-table col.col-company { width: 66px; }
+  .detail-table col.col-date   { width: 52px; }
+  .detail-table col.col-sale   { width: 52px; }
+  .detail-table col.col-paid   { width: 46px; }
+  .detail-table col.col-misoo  { width: 52px; }
+  .detail-table col.col-risk   { width: 40px; }
+  .cell-company { width: 66px; padding: 2px 3px; }
   .cell-company .company-name  { font-size: 8px; overflow-x: hidden; text-overflow: ellipsis; }
   .cell-company .company-total,
   .company-count { font-size: 7px; }
   .risk-dot { width: 5px; height: 5px; margin-right: 2px; }
-  .days-text { font-size: 7px; }
+
+  /* 경과일 열은 캡처 시인성을 위해 숨기고, 확보된 폭을 위험도 열에 배분 */
+  .detail-table col.col-days,
+  .detail-table th.head-days,
+  .detail-table td.cell-days {
+    display: none !important;
+  }
 
   /* 자금 특이사항 - 컬럼 폭 축소해서 거래처명에 공간 더 주기 */
   .fund-issue-date   { width: 56px; font-size: 10px; }
