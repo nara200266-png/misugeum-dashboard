@@ -643,23 +643,23 @@ body {
   .paytype-sidebar-count { font-size: 10px; }
   .paytype-sidebar-total { font-size: 12px; margin-left: auto; }
 
-  /* 미수 상세 테이블 - 컬럼이 많아서 옆으로 스크롤 */
-  .paytype-body { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-  .detail-table { font-size: 10px; }
-  .cell-company { width: 120px; }
-  .detail-table col.col-company { width: 120px; }
-
-  /* 거래처 열 고정(엑셀 틀고정처럼) - 나머지 열만 좌우로 스와이프해서 봄 */
-  .detail-table th.head-company,
-  .detail-table td.cell-company {
-    position: sticky;
-    left: 0;
-    z-index: 2;
-    box-shadow: 2px 0 4px -2px rgba(0,0,0,.15); /* 고정된 열이라는 걸 시각적으로 표시 */
-  }
-  /* 스크롤되는 다른 열이 고정된 열 밑으로 비쳐 보이지 않도록 불투명 배경 필수 */
-  .detail-table td.cell-company { background: #F4F7FC; }
-  .detail-table th.head-company { background: #E3EBF8; }
+  /* 미수 상세 테이블 - 초고밀도 단일 화면(캡처용): 스크롤/틀고정 없이
+     폰트·여백을 극한까지 줄여서 모든 열이 한 화면 너비 안에 다 들어오게 함 */
+  .detail-table { font-size: 8px; table-layout: fixed; }
+  .detail-table th, .detail-table td { padding: 1px 2px; white-space: nowrap; }
+  .detail-table col.col-company { width: 62px; }
+  .detail-table col.col-date   { width: 50px; }
+  .detail-table col.col-sale   { width: 50px; }
+  .detail-table col.col-paid   { width: 44px; }
+  .detail-table col.col-misoo  { width: 50px; }
+  .detail-table col.col-risk   { width: 26px; }
+  .detail-table col.col-days   { width: 28px; }
+  .cell-company { width: 62px; padding: 2px 3px; }
+  .cell-company .company-name  { font-size: 8px; overflow-x: hidden; text-overflow: ellipsis; }
+  .cell-company .company-total,
+  .company-count { font-size: 7px; }
+  .risk-dot { width: 5px; height: 5px; margin-right: 2px; }
+  .days-text { font-size: 7px; }
 
   /* 자금 특이사항 - 컬럼 폭 축소해서 거래처명에 공간 더 주기 */
   .fund-issue-date   { width: 56px; font-size: 10px; }
