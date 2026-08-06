@@ -13,7 +13,8 @@
   - resetFilters()           : 필터 초기화
   - updateStatus()           : 상태바 업데이트
   - applyFilters()           : 전체 필터 적용 (KPI + 차트 + 테이블)
-  - renderTable()            : 미수 테이블 렌더
+  - renderTable()            : 미수 테이블 렌더 (담당자/결제조건/위험도가 전부 "전체"면 renderDepositTable로 위임)
+  - renderDepositTable(q)    : 최근 입금내역 표 렌더 (기본 최근 7일, 최신순)
   - toggleAll()              : 전체 펼치기/접기
   - renderCharts()           : 차트 렌더
   - showLedger(companyName)  : 거래처 클릭 시 오른쪽 원장 표시
@@ -120,6 +121,7 @@ function renderFundIssues() {
 function init() {
   document.getElementById("date-badge").textContent = "기준일: " + DATA.today;
   document.getElementById("count-badge").textContent = "총 " + DATA.companies.length + "개 거래처";
+  setDefaultDepositDateRange();
   renderManagerFilter();
   renderPaytypeFilter();
   renderRiskFilter();
@@ -277,9 +279,109 @@ function applyFilters() {
   alignFundIssueCard();
 }
 
+// ── 담당자/결제조건/위험도가 전부 "전체"일 때 표시할 "최근 입금내역" 상태 ──
+var depositView = { dateFrom: '', dateTo: '' };
+
+function formatDateInput(d) {
+  var y = d.getFullYear();
+  var m = ('0' + (d.getMonth() + 1)).slice(-2);
+  var day = ('0' + d.getDate()).slice(-2);
+  return y + '-' + m + '-' + day;
+}
+
+// 기본값: 오늘 기준 최근 7일
+function setDefaultDepositDateRange() {
+  var p = DATA.today.split('-');
+  var today = new Date(parseInt(p[0]), parseInt(p[1]) - 1, parseInt(p[2]));
+  var weekAgo = new Date(today.getTime() - 7 * 86400000);
+  depositView.dateFrom = formatDateInput(weekAgo);
+  depositView.dateTo = formatDateInput(today);
+}
+
+function setDepositDate() {
+  depositView.dateFrom = document.getElementById("deposit-date-from").value;
+  depositView.dateTo   = document.getElementById("deposit-date-to").value;
+  renderTable();
+}
+
+function resetDepositDate() {
+  setDefaultDepositDateRange();
+  renderTable();
+}
+
+function buildDepositDateFilterHtml() {
+  return '<span class="ledger-date-label">기간</span>' +
+    '<input type="date" class="ledger-date-input" id="deposit-date-from" value="' + depositView.dateFrom + '" onchange="setDepositDate()">' +
+    '<span style="color:var(--회색글자)">~</span>' +
+    '<input type="date" class="ledger-date-input" id="deposit-date-to" value="' + depositView.dateTo + '" onchange="setDepositDate()">' +
+    '<button class="ledger-date-reset" onclick="resetDepositDate()">최근 7일</button>';
+}
+
+// ── 최근 입금내역 표 (거래처/결제조건/위험도 전부 "전체"일 때만 노출, 최신순) ──
+function renderDepositTable(searchQuery) {
+  var container = document.getElementById("table-body");
+  var deposits = (DATA.deposits || []).slice();
+
+  var fromSerial = dateToSerial(depositView.dateFrom);
+  var toSerial   = dateToSerial(depositView.dateTo);
+  if (fromSerial > 0) deposits = deposits.filter(function(d) { return d.date >= fromSerial; });
+  if (toSerial > 0)   deposits = deposits.filter(function(d) { return d.date <= toSerial; });
+  if (searchQuery) deposits = deposits.filter(function(d) { return (d.company || '').toLowerCase().indexOf(searchQuery) >= 0; });
+
+  deposits.sort(function(a, b) { return b.date - a.date; }); // 최신일이 맨 위
+
+  if (deposits.length === 0) {
+    container.innerHTML = '<div style="padding:40px;text-align:center;color:#6B7A94">해당 기간에 입금 내역이 없습니다</div>';
+    return;
+  }
+
+  var rows = '';
+  deposits.forEach(function(d) {
+    rows += '<tr class="ledger-row deposit">';
+    rows += '<td>' + formatDate(d.date) + '</td>';
+    rows += '<td class="ledger-link" style="cursor:pointer" onclick="showLedger(\'' + (d.company || '').replace(/'/g, "\\'") + '\')">' + (d.company || '-') + '</td>';
+    rows += '<td>' + depositSourceLabel(d.source) + '</td>';
+    rows += '<td style="text-align:right;font-weight:600;color:#0F7B52">' + formatAmountFull(d.amount) + '</td>';
+    rows += '</tr>';
+  });
+
+  var total = deposits.reduce(function(s, d) { return s + d.amount; }, 0);
+
+  var html = '<div class="ledger-table-wrap" style="margin:0 18px 18px">';
+  html += '<table class="ledger-table">';
+  html += '<thead><tr><th>입금일</th><th>거래처</th><th>출처</th><th style="text-align:right">입금액</th></tr></thead>';
+  html += '<tbody>' + rows + '</tbody>';
+  html += '<tfoot><tr class="ledger-foot"><td colspan="3">합계 (' + deposits.length + '건)</td><td style="text-align:right;color:#0F7B52">' + formatAmountFull(total) + '</td></tr></tfoot>';
+  html += '</table></div>';
+  container.innerHTML = html;
+}
+
 // ── 미수 테이블 렌더링 ──
 function renderTable() {
   var searchQuery = document.getElementById("search-box").value.toLowerCase();
+  var expandBtn = document.getElementById("expand-btn");
+  var colHeader = document.querySelector(".column-header");
+  var dateFilterEl = document.getElementById("deposit-date-filter");
+  var isAllFilter = filter.manager === "전체" && filter.paytype === "전체" && filter.risk === "전체";
+
+  if (isAllFilter) {
+    // 필터가 전부 "전체"일 때는 미수내역 대신 최근 입금내역을 보여줌
+    setKpiText("table-title", "최근 입금내역");
+    if (expandBtn) expandBtn.style.display = "none";
+    if (colHeader) colHeader.style.display = "none";
+    if (dateFilterEl) {
+      dateFilterEl.style.display = "flex";
+      dateFilterEl.innerHTML = buildDepositDateFilterHtml();
+    }
+    renderDepositTable(searchQuery);
+    return;
+  }
+
+  if (expandBtn) expandBtn.style.display = "";
+  if (colHeader) colHeader.style.display = "";
+  if (dateFilterEl) dateFilterEl.style.display = "none";
+  setKpiText("table-title", filter.manager === "전체" ? "전체 미수내역" : filter.manager + " 담당 미수내역");
+
   var records = DATA.records.filter(function(r) {
     if (r.misooamt <= 0) return false;
     if (filter.manager !== "전체" && r.manager !== filter.manager) return false;
