@@ -356,10 +356,29 @@ function renderTrendWidget() {
     else if (expectedIdx < todayIdx) overdue += r.misooamt;
   });
 
+  // 최근 6개월(달력 기준) 매출·입금 추이 - 그래프용
+  var p2 = DATA.today.split('-');
+  var y2 = parseInt(p2[0]), m2 = parseInt(p2[1]);
+  var monthRanges = [];
+  for (var i = 5; i >= 0; i--) {
+    var idx = y2 * 12 + (m2 - 1) - i;
+    var yy = Math.floor(idx / 12), mm = (idx % 12) + 1;
+    var mStart = new Date(yy, mm - 1, 1);
+    var mEnd   = new Date(yy, mm, 0);
+    monthRanges.push({
+      label: mm + '월',
+      from: dateToSerial(formatDateInput(mStart)),
+      to: dateToSerial(formatDateInput(mEnd))
+    });
+  }
+  var salesSeries   = monthRanges.map(function(r) { return sumSales(r.from, r.to); });
+  var depositSeries = monthRanges.map(function(r) { return sumDeposits(r.from, r.to); });
+
   el.innerHTML =
     '<div class="trend-widget">' +
-      '<div class="trend-widget-title">최근 30일 vs 이전 30일 매출·입금 현황</div>' +
-      '<div class="trend-widget-sub">현재 필터 기준' + (filter.risk !== "전체" ? ' (위험도는 매출에만 적용됨)' : '') + '</div>' +
+      '<div class="trend-widget-title">최근 6개월 매출·입금 추이</div>' +
+      '<div class="trend-widget-sub">현재 필터 기준</div>' +
+      '<div class="chart-wrap" style="height:150px"><canvas id="chart-trend"></canvas></div>' +
       trendRow('매출 총액', saleThis, saleLast) +
       trendRow('입금 총액', depThis, depLast) +
       trendRow('미수 총액(매출－입금)', netThis, netLast, true) +
@@ -367,9 +386,37 @@ function renderTrendWidget() {
         '<div class="trend-micro-item"><span class="trend-micro-label">당월 수금 예정</span><span class="trend-micro-value">' + formatAmount(dueThisMonth) + '</span></div>' +
         '<div class="trend-micro-item"><span class="trend-micro-label">지연 미수금</span><span class="trend-micro-value warn">' + formatAmount(overdue) + '</span></div>' +
       '</div>' +
-      '<div class="trend-period">최근 30일 ' + formatDate(thisM.from) + '~' + formatDate(thisM.to) +
+      '<div class="trend-period">' + (filter.risk !== "전체" ? '위험도는 매출에만 적용됨 · ' : '') +
+        '최근 30일 ' + formatDate(thisM.from) + '~' + formatDate(thisM.to) +
         ' · 이전 30일 ' + formatDate(lastM.from) + '~' + formatDate(lastM.to) + '</div>' +
     '</div>';
+
+  if (chartTrend) chartTrend.destroy();
+  var trendCanvas = document.getElementById('chart-trend');
+  if (trendCanvas) {
+    chartTrend = new Chart(trendCanvas.getContext('2d'), {
+      type: 'line',
+      data: {
+        labels: monthRanges.map(function(r) { return r.label; }),
+        datasets: [
+          { label: '매출액', data: salesSeries, borderColor: '#2554A0', backgroundColor: 'rgba(37,84,160,.18)', fill: true, tension: 0.35, pointRadius: 2, borderWidth: 2 },
+          { label: '입금액', data: depositSeries, borderColor: '#0F7B52', backgroundColor: 'rgba(15,123,82,.18)', fill: true, tension: 0.35, pointRadius: 2, borderWidth: 2 }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: true, position: 'top', align: 'end', labels: { boxWidth: 10, font: { size: 10 } } },
+          tooltip: { callbacks: { label: function(ctx) { return ' ' + ctx.dataset.label + ': ' + formatAmountFull(ctx.raw); } } }
+        },
+        scales: {
+          x: { grid: { display: false }, ticks: { font: { size: 10 } } },
+          y: { ticks: { font: { size: 10 }, callback: function(v) { return formatAmount(v); } } }
+        }
+      }
+    });
+  }
 }
 
 // ── 결제조건별 예상 수금월 역산용 헬퍼 ──
@@ -399,6 +446,9 @@ function trendRow(label, cur, prev, highlight) {
 
 // ── 담당자/결제조건/위험도가 전부 "전체"일 때 표시할 "최근 입금내역" 상태 ──
 var depositView = { dateFrom: '', dateTo: '' };
+
+// ── 원장 대기화면의 매출·입금 추이 차트 인스턴스 (재렌더 시 destroy 후 재생성) ──
+var chartTrend = null;
 
 function formatDateInput(d) {
   var y = d.getFullYear();
