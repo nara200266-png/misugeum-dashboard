@@ -249,6 +249,7 @@ function applyFilters() {
     displayCompanies = filteredCompanies;
   }
   var total = displayCompanies.reduce(function(sum, c) { return sum + c.amount; }, 0);
+  currentMisooTotal = total; // 우측 트렌드 위젯의 "미수 총액"이 이 값을 그대로 바인딩해서 씀
   setKpiText("kpi-total", formatAmount(total));
   setKpiText("kpi-company-count", displayCompanies.length + "개사");
   setKpiText("kpi-manager-count", (filter.manager === "전체" ? DATA.managers.length : 1) + "명");
@@ -335,19 +336,16 @@ function renderTrendWidget() {
   var depThis  = sumDeposits(thisM.from, thisM.to);
   var depLast  = sumDeposits(lastM.from, lastM.to);
 
-  // 미수 총액은 왼쪽 패널의 "전체 미수금 합계"와 같은 기준(AF열=misooamt 그대로 합산)을 쓰되,
-  // 매출일이 각 기간(최근 30일 / 이전 30일)에 속하는 건들로만 나눠서 추이 비교
-  function sumMisoo(fromS, toS) {
-    return DATA.records.reduce(function(sum, r) {
-      if (filter.manager !== "전체" && r.manager !== filter.manager) return sum;
-      if (filter.paytype !== "전체" && r.paytype !== filter.paytype) return sum;
-      if (filter.risk !== "전체" && calcRisk(r.saledate, r.paytype).label !== filter.risk) return sum;
-      if (r.saledate < fromS || r.saledate > toS) return sum;
-      return sum + r.misooamt;
-    }, 0);
-  }
-  var netThis = sumMisoo(thisM.from, thisM.to);
-  var netLast = sumMisoo(lastM.from, lastM.to);
+  // 미수 총액: 좌측 KPI 카드 "전체 미수금 합계"와 별도로 계산하지 않고, applyFilters()가
+  // 세팅해둔 currentMisooTotal(=이월분 포함 전체 기간 누적 AF열 합계)을 그대로 바인딩한다.
+  var misooToday = currentMisooTotal;
+  // 증감(▲/▼)은 "오늘 누적 미수 총액 - 30일 전 누적 미수 총액"이어야 하는데, misooamt는
+  // 시점별 스냅샷이 없는 현재값이라 30일 전 누적치를 직접 조회할 수는 없다. 대신
+  // "누적 미수금 = 누적 매출 - 누적 입금" 항등식을 이용해 역산한다:
+  //   30일 전 누적 미수금 = 오늘 누적 미수금 - (최근 30일 매출) + (최근 30일 입금)
+  // 이렇게 재구성한 값과 오늘 값의 차이는 결국 (최근 30일 매출 - 최근 30일 입금)과 같아서,
+  // 별도 이력 저장 없이도 "진짜 누적 잔액 기준" 증감액을 정확히 계산할 수 있다.
+  var misoo30dAgo = misooToday - (saleThis - depThis);
 
   // 당월 수금 예정액 / 지연 미수금: 결제조건별로 실제 수금이 몰리는 달을 역산해서 판단
   // (7일이내 결제 = 매출월 안에 수금 예상 / 나머지는 전부 익월에 수금 예상)
@@ -391,7 +389,7 @@ function renderTrendWidget() {
       '<div class="chart-wrap" style="height:150px"><canvas id="chart-trend"></canvas></div>' +
       trendRow('매출 총액', saleThis, saleLast) +
       trendRow('입금 총액', depThis, depLast) +
-      trendRow('미수 총액', netThis, netLast, true) +
+      trendRow('미수 총액', misooToday, misoo30dAgo, true) +
       '<div class="trend-micro">' +
         '<div class="trend-micro-item"><span class="trend-micro-label">당월 수금 예정</span><span class="trend-micro-value">' + formatAmount(dueThisMonth) + '</span></div>' +
         '<div class="trend-micro-item"><span class="trend-micro-label">지연 미수금</span><span class="trend-micro-value warn">' + formatAmount(overdue) + '</span></div>' +
@@ -459,6 +457,11 @@ var depositView = { dateFrom: '', dateTo: '' };
 
 // ── 원장 대기화면의 매출·입금 추이 차트 인스턴스 (재렌더 시 destroy 후 재생성) ──
 var chartTrend = null;
+
+// ── 좌측 KPI 카드 "전체 미수금 합계"와 우측 트렌드 위젯 "미수 총액"이 100% 동일한 값을
+//    쓰도록 단일 소스로 관리하는 변수. applyFilters()에서만 값을 세팅하고,
+//    renderTrendWidget()은 이 값을 그대로 읽기만 한다(별도 재계산 금지).
+var currentMisooTotal = 0;
 
 function formatDateInput(d) {
   var y = d.getFullYear();
