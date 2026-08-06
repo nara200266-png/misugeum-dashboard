@@ -332,11 +332,9 @@ function renderTrendWidget() {
   var depThis  = sumDeposits(thisM.from, thisM.to);
   var depLast  = sumDeposits(lastM.from, lastM.to);
 
-  // 미수금 순증감 = 이번달 매출 - 이번달 입금 (매출이 더 많으면 미수금이 늘어남, 입금이 더 많으면 줄어듦)
-  var net = saleThis - depThis;
-  var netCls = net > 0 ? 'up' : net < 0 ? 'down' : 'flat';
-  var netWord = net > 0 ? '증가' : net < 0 ? '감소' : '변동없음';
-  var netArrow = net > 0 ? '▲' : net < 0 ? '▼' : '－';
+  // 미수 총액(매출－입금)도 매출/입금과 똑같이 "이번달 값 vs 지난달 값"으로 비교
+  var netThis = saleThis - depThis;
+  var netLast = saleLast - depLast;
 
   el.innerHTML =
     '<div class="trend-widget">' +
@@ -344,22 +342,19 @@ function renderTrendWidget() {
       '<div class="trend-widget-sub">현재 필터 기준' + (filter.risk !== "전체" ? ' (위험도는 매출에만 적용됨)' : '') + '</div>' +
       trendRow('매출 총액', saleThis, saleLast) +
       trendRow('입금 총액', depThis, depLast) +
-      '<div class="trend-net ' + netCls + '">' +
-        '<span class="trend-net-label">미수금 순증감 (매출－입금)</span>' +
-        '<span class="trend-net-value">' + netArrow + ' ' + formatAmountFull(Math.abs(net)) + ' ' + netWord + '</span>' +
-      '</div>' +
+      trendRow('미수 총액(매출－입금)', netThis, netLast, true) +
       '<div class="trend-period">이번달 ' + formatDate(thisM.from) + '~' + formatDate(thisM.to) +
         ' · 지난달 ' + formatDate(lastM.from) + '~' + formatDate(lastM.to) + '</div>' +
     '</div>';
 }
 
-function trendRow(label, cur, prev) {
+function trendRow(label, cur, prev, highlight) {
   var diff = cur - prev;
   var pct = prev !== 0 ? (diff / prev * 100) : null;
   var cls = diff > 0 ? 'up' : diff < 0 ? 'down' : 'flat';
   var arrow = diff > 0 ? '▲' : diff < 0 ? '▼' : '－';
   var pctText = pct === null ? '' : ' (' + (diff >= 0 ? '+' : '') + pct.toFixed(1) + '%)';
-  return '<div class="trend-row">' +
+  return '<div class="trend-row' + (highlight ? ' trend-row-highlight' : '') + '">' +
     '<div class="trend-label">' + label + '</div>' +
     '<div class="trend-value-group">' +
       '<span class="trend-value">' + formatAmountFull(cur) + '</span>' +

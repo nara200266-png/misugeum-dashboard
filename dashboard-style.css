@@ -603,23 +603,15 @@ body {
 .trend-diff.down { color: #2554A0; }
 .trend-diff.flat { color: var(--회색글자); }
 
-/* 결론(미수금 순증감) - 계산 없이 바로 보이도록 강조 */
-.trend-net {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 8px;
+/* 결론(미수 총액 매출-입금) 행 - 매출/입금이랑 같은 "이번달 vs 지난달" 형식이지만 배경으로 강조 */
+.trend-row.trend-row-highlight {
   margin-top: 4px;
   padding: 10px 12px;
+  border-top: none;
   border-radius: 8px;
   background: var(--배경색);
 }
-.trend-net-label { font-size: 12px; font-weight: 700; color: var(--글자색); }
-.trend-net-value { font-size: 14px; font-weight: 800; white-space: nowrap; }
-.trend-net.up   .trend-net-value { color: var(--빨강); }
-.trend-net.down .trend-net-value { color: #2554A0; }
-.trend-net.flat .trend-net-value { color: var(--회색글자); }
+.trend-row-highlight .trend-label { width: auto; font-weight: 700; color: var(--글자색); }
 
 .trend-period { font-size: 10px; color: var(--회색글자); margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--테두리); }
 
