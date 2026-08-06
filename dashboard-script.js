@@ -57,9 +57,11 @@ function alignFundIssueCard() {
 // ── 숫자 포맷 함수 ──
 function formatAmount(n) {
   if (!n || n === 0) return "0원";
-  if (n >= 100000000) return (n / 100000000).toFixed(1) + "억원";
-  if (n >= 10000) return Math.round(n / 10000).toLocaleString("ko-KR") + "만원";
-  return n.toLocaleString("ko-KR") + "원";
+  var sign = n < 0 ? "-" : "";
+  var abs = Math.abs(n);
+  if (abs >= 100000000) return sign + (abs / 100000000).toFixed(1) + "억원";
+  if (abs >= 10000) return sign + Math.round(abs / 10000).toLocaleString("ko-KR") + "만원";
+  return sign + abs.toLocaleString("ko-KR") + "원";
 }
 function formatAmountFull(n) { return (n || 0).toLocaleString("ko-KR") + "원"; }
 
@@ -284,13 +286,14 @@ function applyFilters() {
   renderTrendWidget();
 }
 
-// ── 이번달/지난달(offset=0/1) 1일~말일의 엑셀 시리얼 날짜 범위 ──
-function monthRangeSerial(monthsAgo) {
-  var p = DATA.today.split('-');
-  var y = parseInt(p[0]), m = parseInt(p[1]);
-  var start = new Date(y, m - 1 - monthsAgo, 1);
-  var end   = new Date(y, m - monthsAgo, 0);
-  return { from: dateToSerial(formatDateInput(start)), to: dateToSerial(formatDateInput(end)) };
+// ── 최근 30일(windowsAgo=0) / 그 이전 30일(windowsAgo=1)의 엑셀 시리얼 날짜 범위 ──
+// 달력상 "이번달 1일~말일"로 하면 월초에는 며칠 치밖에 없어서 지난달(30일 치) 대비
+// 증감률이 극단적으로 왜곡됨(예: -90%). 항상 같은 30일 폭으로 비교해야 공정한 비교가 됨.
+function rollingRangeSerial(windowsAgo) {
+  var todaySerial = dateToSerial(DATA.today);
+  var to = todaySerial - windowsAgo * 30;
+  var from = to - 29;
+  return { from: from, to: to };
 }
 
 // ── 오른쪽 패널 대기화면: 이번달 vs 지난달 매출·입금 증감 요약 위젯 (좌측 필터에 반응) ──
@@ -304,8 +307,8 @@ function renderTrendWidget() {
   var companyInfo = {};
   (DATA.companies || []).forEach(function(c) { companyInfo[c.name] = c; });
 
-  var thisM = monthRangeSerial(0);
-  var lastM = monthRangeSerial(1);
+  var thisM = rollingRangeSerial(0);
+  var lastM = rollingRangeSerial(1);
 
   function sumSales(fromS, toS) {
     return DATA.records.reduce(function(sum, r) {
@@ -338,13 +341,13 @@ function renderTrendWidget() {
 
   el.innerHTML =
     '<div class="trend-widget">' +
-      '<div class="trend-widget-title">이번달 vs 지난달 매출·입금 현황</div>' +
+      '<div class="trend-widget-title">최근 30일 vs 이전 30일 매출·입금 현황</div>' +
       '<div class="trend-widget-sub">현재 필터 기준' + (filter.risk !== "전체" ? ' (위험도는 매출에만 적용됨)' : '') + '</div>' +
       trendRow('매출 총액', saleThis, saleLast) +
       trendRow('입금 총액', depThis, depLast) +
       trendRow('미수 총액(매출－입금)', netThis, netLast, true) +
-      '<div class="trend-period">이번달 ' + formatDate(thisM.from) + '~' + formatDate(thisM.to) +
-        ' · 지난달 ' + formatDate(lastM.from) + '~' + formatDate(lastM.to) + '</div>' +
+      '<div class="trend-period">최근 30일 ' + formatDate(thisM.from) + '~' + formatDate(thisM.to) +
+        ' · 이전 30일 ' + formatDate(lastM.from) + '~' + formatDate(lastM.to) + '</div>' +
     '</div>';
 }
 
@@ -357,7 +360,7 @@ function trendRow(label, cur, prev, highlight) {
   return '<div class="trend-row' + (highlight ? ' trend-row-highlight' : '') + '">' +
     '<div class="trend-label">' + label + '</div>' +
     '<div class="trend-value-group">' +
-      '<span class="trend-value">' + formatAmountFull(cur) + '</span>' +
+      '<span class="trend-value">' + formatAmountFull(cur) + ' <span class="trend-value-short">(' + formatAmount(cur) + ')</span></span>' +
       '<span class="trend-diff ' + cls + '">' + arrow + ' ' + formatAmountFull(Math.abs(diff)) + pctText + '</span>' +
     '</div>' +
   '</div>';

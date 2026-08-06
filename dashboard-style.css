@@ -598,6 +598,7 @@ body {
 /* 값과 증감률을 한데 묶어서 붙여놔야 시선이 좌우로 안 흩어짐 */
 .trend-value-group { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
 .trend-value { font-size: 17px; font-weight: 800; color: var(--글자색); }
+.trend-value-short { font-size: 11px; font-weight: 500; color: var(--회색글자); }
 .trend-diff { font-size: 12px; font-weight: 700; white-space: nowrap; }
 .trend-diff.up   { color: var(--빨강); }
 .trend-diff.down { color: #2554A0; }
