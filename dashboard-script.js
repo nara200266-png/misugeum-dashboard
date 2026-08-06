@@ -24,6 +24,8 @@
   - formatDate(serial)       : 엑셀 날짜 시리얼 → YYYY-MM-DD
   - calcRisk(serial, paytype): 위험도 계산
   - renderFundIssues()       : 자금 특이사항(과입금/선입금) 렌더 - 필터와 무관하게 항상 표시
+  - setLedgerDateThisMonth() : 원장 기간 필터 빠른 선택 - 당월 1일~말일
+  - setLedgerDateLastMonth() : 원장 기간 필터 빠른 선택 - 지난달 1일~말일
 */
 
 // ── 입금 건의 출처 라벨 (은행/카드) ──
@@ -570,6 +572,8 @@ function renderLedger() {
   html += '<span style="color:var(--회색글자)">~</span>';
   html += '<input type="date" class="ledger-date-input" id="ld-to"   value="' + ledgerState.dateTo   + '" onchange="setLedgerDate()">';
   html += '<button class="ledger-date-reset" onclick="resetLedgerDate()">전체</button>';
+  html += '<button class="ledger-date-reset" onclick="setLedgerDateThisMonth()">당월</button>';
+  html += '<button class="ledger-date-reset" onclick="setLedgerDateLastMonth()">지난달</button>';
   html += '</div>';
   html += '</div>'; // ledger-header 끝
 
@@ -750,6 +754,24 @@ function setLedgerDate() {
 function resetLedgerDate() {
   ledgerState.dateFrom = '';
   ledgerState.dateTo   = '';
+  renderLedger();
+}
+
+// ── 빠른 기간 필터: 당월 (이번 달 1일 ~ 말일) ──
+function setLedgerDateThisMonth() {
+  var p = DATA.today.split('-');
+  var y = parseInt(p[0]), m = parseInt(p[1]);
+  ledgerState.dateFrom = formatDateInput(new Date(y, m - 1, 1));
+  ledgerState.dateTo   = formatDateInput(new Date(y, m, 0)); // 0일 = 이번 달 말일
+  renderLedger();
+}
+
+// ── 빠른 기간 필터: 지난달 (전월 1일 ~ 말일) ──
+function setLedgerDateLastMonth() {
+  var p = DATA.today.split('-');
+  var y = parseInt(p[0]), m = parseInt(p[1]);
+  ledgerState.dateFrom = formatDateInput(new Date(y, m - 2, 1));
+  ledgerState.dateTo   = formatDateInput(new Date(y, m - 1, 0)); // 0일 = 지난 달 말일
   renderLedger();
 }
 
