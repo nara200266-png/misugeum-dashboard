@@ -332,12 +332,22 @@ function renderTrendWidget() {
   var depThis  = sumDeposits(thisM.from, thisM.to);
   var depLast  = sumDeposits(lastM.from, lastM.to);
 
+  // 미수금 순증감 = 이번달 매출 - 이번달 입금 (매출이 더 많으면 미수금이 늘어남, 입금이 더 많으면 줄어듦)
+  var net = saleThis - depThis;
+  var netCls = net > 0 ? 'up' : net < 0 ? 'down' : 'flat';
+  var netWord = net > 0 ? '증가' : net < 0 ? '감소' : '변동없음';
+  var netArrow = net > 0 ? '▲' : net < 0 ? '▼' : '－';
+
   el.innerHTML =
     '<div class="trend-widget">' +
       '<div class="trend-widget-title">이번달 vs 지난달 매출·입금 현황</div>' +
       '<div class="trend-widget-sub">현재 필터 기준' + (filter.risk !== "전체" ? ' (위험도는 매출에만 적용됨)' : '') + '</div>' +
       trendRow('매출 총액', saleThis, saleLast) +
       trendRow('입금 총액', depThis, depLast) +
+      '<div class="trend-net ' + netCls + '">' +
+        '<span class="trend-net-label">미수금 순증감 (매출－입금)</span>' +
+        '<span class="trend-net-value">' + netArrow + ' ' + formatAmountFull(Math.abs(net)) + ' ' + netWord + '</span>' +
+      '</div>' +
       '<div class="trend-period">이번달 ' + formatDate(thisM.from) + '~' + formatDate(thisM.to) +
         ' · 지난달 ' + formatDate(lastM.from) + '~' + formatDate(lastM.to) + '</div>' +
     '</div>';
@@ -351,8 +361,10 @@ function trendRow(label, cur, prev) {
   var pctText = pct === null ? '' : ' (' + (diff >= 0 ? '+' : '') + pct.toFixed(1) + '%)';
   return '<div class="trend-row">' +
     '<div class="trend-label">' + label + '</div>' +
-    '<div class="trend-value">' + formatAmountFull(cur) + '</div>' +
-    '<div class="trend-diff ' + cls + '">' + arrow + ' ' + formatAmountFull(Math.abs(diff)) + pctText + '</div>' +
+    '<div class="trend-value-group">' +
+      '<span class="trend-value">' + formatAmountFull(cur) + '</span>' +
+      '<span class="trend-diff ' + cls + '">' + arrow + ' ' + formatAmountFull(Math.abs(diff)) + pctText + '</span>' +
+    '</div>' +
   '</div>';
 }
 
@@ -807,8 +819,11 @@ function dateToSerial(dateStr) {
   if (!dateStr) return 0;
   var parts = dateStr.split('-');
   if (parts.length !== 3) return 0;
-  var d = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
-  return Math.floor(d / 86400000) + 25569;
+  // new Date(y,m,d)는 "로컬 자정"을 만들고 나서 .valueOf()로 UTC ms를 얻기 때문에,
+  // UTC+9(한국) 등 로컬 타임존이 UTC보다 앞서면 자정이 전날 UTC로 넘어가 하루가 당겨지는 버그가 있었음.
+  // Date.UTC로 처음부터 UTC 기준으로 만들어서 이 문제를 없앰 (formatDate()와 동일한 기준으로 통일).
+  var utcMs = Date.UTC(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+  return Math.floor(utcMs / 86400000) + 25569;
 }
 
 // ── 뷰 모드 변경 ──
