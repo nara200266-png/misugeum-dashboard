@@ -463,6 +463,7 @@ body {
   vertical-align: middle;
   white-space: nowrap;
 }
+.paid-label.card { color: #0078D7; background: #E3F2FD; }
 
 .ledger-badge {
   display: inline-block;

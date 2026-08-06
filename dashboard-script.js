@@ -30,7 +30,8 @@
 function depositSourceLabel(source) {
   // 은행(당월)/은행(ERP)는 구분 없이 "현금"으로 통일해서 표시 (카드는 그대로)
   var label = (source === '은행(당월)' || source === '은행(ERP)') ? '현금' : source;
-  return '<span class="paid-label">' + (label || '-') + '</span>';
+  var cls = (label === '카드') ? 'paid-label card' : 'paid-label';
+  return '<span class="' + cls + '">' + (label || '-') + '</span>';
 }
 
 // ── id의 엘리먼트가 있을 때만 텍스트 반영 (매크로가 아직 재생성 전이라 HTML에 새 id가 없어도 안전) ──
