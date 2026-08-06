@@ -335,9 +335,19 @@ function renderTrendWidget() {
   var depThis  = sumDeposits(thisM.from, thisM.to);
   var depLast  = sumDeposits(lastM.from, lastM.to);
 
-  // 미수 총액(매출－입금)도 매출/입금과 똑같이 "이번달 값 vs 지난달 값"으로 비교
-  var netThis = saleThis - depThis;
-  var netLast = saleLast - depLast;
+  // 미수 총액은 왼쪽 패널의 "전체 미수금 합계"와 같은 기준(AF열=misooamt 그대로 합산)을 쓰되,
+  // 매출일이 각 기간(최근 30일 / 이전 30일)에 속하는 건들로만 나눠서 추이 비교
+  function sumMisoo(fromS, toS) {
+    return DATA.records.reduce(function(sum, r) {
+      if (filter.manager !== "전체" && r.manager !== filter.manager) return sum;
+      if (filter.paytype !== "전체" && r.paytype !== filter.paytype) return sum;
+      if (filter.risk !== "전체" && calcRisk(r.saledate, r.paytype).label !== filter.risk) return sum;
+      if (r.saledate < fromS || r.saledate > toS) return sum;
+      return sum + r.misooamt;
+    }, 0);
+  }
+  var netThis = sumMisoo(thisM.from, thisM.to);
+  var netLast = sumMisoo(lastM.from, lastM.to);
 
   // 당월 수금 예정액 / 지연 미수금: 결제조건별로 실제 수금이 몰리는 달을 역산해서 판단
   // (7일이내 결제 = 매출월 안에 수금 예상 / 나머지는 전부 익월에 수금 예상)
@@ -381,7 +391,7 @@ function renderTrendWidget() {
       '<div class="chart-wrap" style="height:150px"><canvas id="chart-trend"></canvas></div>' +
       trendRow('매출 총액', saleThis, saleLast) +
       trendRow('입금 총액', depThis, depLast) +
-      trendRow('미수 총액(매출－입금)', netThis, netLast, true) +
+      trendRow('미수 총액', netThis, netLast, true) +
       '<div class="trend-micro">' +
         '<div class="trend-micro-item"><span class="trend-micro-label">당월 수금 예정</span><span class="trend-micro-value">' + formatAmount(dueThisMonth) + '</span></div>' +
         '<div class="trend-micro-item"><span class="trend-micro-label">지연 미수금</span><span class="trend-micro-value warn">' + formatAmount(overdue) + '</span></div>' +
