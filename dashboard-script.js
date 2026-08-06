@@ -339,6 +339,23 @@ function renderTrendWidget() {
   var netThis = saleThis - depThis;
   var netLast = saleLast - depLast;
 
+  // 당월 수금 예정액 / 지연 미수금: 결제조건별로 실제 수금이 몰리는 달을 역산해서 판단
+  // (7일이내 결제 = 매출월 안에 수금 예상 / 나머지는 전부 익월에 수금 예상)
+  var todayYM = serialToYM(dateToSerial(DATA.today));
+  var todayIdx = todayYM.y * 12 + todayYM.m;
+  var dueThisMonth = 0, overdue = 0;
+  DATA.records.forEach(function(r) {
+    if (r.misooamt <= 0) return;
+    if (filter.manager !== "전체" && r.manager !== filter.manager) return;
+    if (filter.paytype !== "전체" && r.paytype !== filter.paytype) return;
+    if (filter.risk !== "전체" && calcRisk(r.saledate, r.paytype).label !== filter.risk) return;
+    var saleYM = serialToYM(r.saledate);
+    var expected = addMonths(saleYM.y, saleYM.m, r.paytype === '7일이내 결제' ? 0 : 1);
+    var expectedIdx = expected.y * 12 + expected.m;
+    if (expectedIdx === todayIdx) dueThisMonth += r.misooamt;
+    else if (expectedIdx < todayIdx) overdue += r.misooamt;
+  });
+
   el.innerHTML =
     '<div class="trend-widget">' +
       '<div class="trend-widget-title">최근 30일 vs 이전 30일 매출·입금 현황</div>' +
@@ -346,9 +363,23 @@ function renderTrendWidget() {
       trendRow('매출 총액', saleThis, saleLast) +
       trendRow('입금 총액', depThis, depLast) +
       trendRow('미수 총액(매출－입금)', netThis, netLast, true) +
+      '<div class="trend-micro">' +
+        '<div class="trend-micro-item"><span class="trend-micro-label">당월 수금 예정</span><span class="trend-micro-value">' + formatAmount(dueThisMonth) + '</span></div>' +
+        '<div class="trend-micro-item"><span class="trend-micro-label">지연 미수금</span><span class="trend-micro-value warn">' + formatAmount(overdue) + '</span></div>' +
+      '</div>' +
       '<div class="trend-period">최근 30일 ' + formatDate(thisM.from) + '~' + formatDate(thisM.to) +
         ' · 이전 30일 ' + formatDate(lastM.from) + '~' + formatDate(lastM.to) + '</div>' +
     '</div>';
+}
+
+// ── 결제조건별 예상 수금월 역산용 헬퍼 ──
+function serialToYM(serial) {
+  var d = new Date((serial - 25569) * 86400000);
+  return { y: d.getFullYear(), m: d.getMonth() + 1 };
+}
+function addMonths(y, m, offset) {
+  var total = y * 12 + (m - 1) + offset;
+  return { y: Math.floor(total / 12), m: (total % 12) + 1 };
 }
 
 function trendRow(label, cur, prev, highlight) {

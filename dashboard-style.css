@@ -614,6 +614,13 @@ body {
 }
 .trend-row-highlight .trend-label { width: auto; font-weight: 700; color: var(--글자색); }
 
+/* 당월 수금 예정액 / 지연 미수금 - 별도 박스 없이 얇은 한 줄로 밀도 유지 */
+.trend-micro { display: flex; gap: 16px; margin-top: 10px; }
+.trend-micro-item { display: flex; align-items: baseline; gap: 6px; }
+.trend-micro-label { font-size: 10px; color: var(--회색글자); }
+.trend-micro-value { font-size: 12px; font-weight: 700; color: var(--글자색); }
+.trend-micro-value.warn { color: var(--빨강); }
+
 .trend-period { font-size: 10px; color: var(--회색글자); margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--테두리); }
 
 /* ══════════════════════════════════════════
