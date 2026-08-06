@@ -26,6 +26,7 @@
   - renderFundIssues()       : 자금 특이사항(과입금/선입금) 렌더 - 필터와 무관하게 항상 표시
   - setLedgerDateThisMonth() : 원장 기간 필터 빠른 선택 - 당월 1일~말일
   - setLedgerDateLastMonth() : 원장 기간 필터 빠른 선택 - 지난달 1일~말일
+  - renderTrendWidget()      : 원장 대기화면에 이번달/지난달 매출·입금 증감 위젯 표시 - 좌측 필터에 반응
 */
 
 // ── 입금 건의 출처 라벨 (은행/카드) ──
@@ -280,6 +281,79 @@ function applyFilters() {
   updateStatus();
   renderTable();
   alignFundIssueCard();
+  renderTrendWidget();
+}
+
+// ── 이번달/지난달(offset=0/1) 1일~말일의 엑셀 시리얼 날짜 범위 ──
+function monthRangeSerial(monthsAgo) {
+  var p = DATA.today.split('-');
+  var y = parseInt(p[0]), m = parseInt(p[1]);
+  var start = new Date(y, m - 1 - monthsAgo, 1);
+  var end   = new Date(y, m - monthsAgo, 0);
+  return { from: dateToSerial(formatDateInput(start)), to: dateToSerial(formatDateInput(end)) };
+}
+
+// ── 오른쪽 패널 대기화면: 이번달 vs 지난달 매출·입금 증감 요약 위젯 (좌측 필터에 반응) ──
+// 매출은 DATA.records(매출일·담당자·결제조건·위험도 모두 보유)를 그대로 필터링하고,
+// 입금은 DATA.deposits에 담당자/결제조건이 없어서 거래처명으로 DATA.companies와 대조해서 필터링한다.
+// (위험도는 개별 미수 인보이스의 성격이라 입금 건에는 적용하지 않음)
+function renderTrendWidget() {
+  var el = document.getElementById('chart-placeholder');
+  if (!el) return;
+
+  var companyInfo = {};
+  (DATA.companies || []).forEach(function(c) { companyInfo[c.name] = c; });
+
+  var thisM = monthRangeSerial(0);
+  var lastM = monthRangeSerial(1);
+
+  function sumSales(fromS, toS) {
+    return DATA.records.reduce(function(sum, r) {
+      if (filter.manager !== "전체" && r.manager !== filter.manager) return sum;
+      if (filter.paytype !== "전체" && r.paytype !== filter.paytype) return sum;
+      if (filter.risk !== "전체" && calcRisk(r.saledate, r.paytype).label !== filter.risk) return sum;
+      if (r.saledate < fromS || r.saledate > toS) return sum;
+      return sum + r.saleamt;
+    }, 0);
+  }
+
+  function sumDeposits(fromS, toS) {
+    return (DATA.deposits || []).reduce(function(sum, d) {
+      var info = companyInfo[d.company];
+      if (filter.manager !== "전체" && (!info || info.manager !== filter.manager)) return sum;
+      if (filter.paytype !== "전체" && (!info || info.paytype !== filter.paytype)) return sum;
+      if (d.date < fromS || d.date > toS) return sum;
+      return sum + d.amount;
+    }, 0);
+  }
+
+  var saleThis = sumSales(thisM.from, thisM.to);
+  var saleLast = sumSales(lastM.from, lastM.to);
+  var depThis  = sumDeposits(thisM.from, thisM.to);
+  var depLast  = sumDeposits(lastM.from, lastM.to);
+
+  el.innerHTML =
+    '<div class="trend-widget">' +
+      '<div class="trend-widget-title">이번달 vs 지난달 매출·입금 현황</div>' +
+      '<div class="trend-widget-sub">현재 필터 기준' + (filter.risk !== "전체" ? ' (위험도는 매출에만 적용됨)' : '') + '</div>' +
+      trendRow('매출 총액', saleThis, saleLast) +
+      trendRow('입금 총액', depThis, depLast) +
+      '<div class="trend-period">이번달 ' + formatDate(thisM.from) + '~' + formatDate(thisM.to) +
+        ' · 지난달 ' + formatDate(lastM.from) + '~' + formatDate(lastM.to) + '</div>' +
+    '</div>';
+}
+
+function trendRow(label, cur, prev) {
+  var diff = cur - prev;
+  var pct = prev !== 0 ? (diff / prev * 100) : null;
+  var cls = diff > 0 ? 'up' : diff < 0 ? 'down' : 'flat';
+  var arrow = diff > 0 ? '▲' : diff < 0 ? '▼' : '－';
+  var pctText = pct === null ? '' : ' (' + (diff >= 0 ? '+' : '') + pct.toFixed(1) + '%)';
+  return '<div class="trend-row">' +
+    '<div class="trend-label">' + label + '</div>' +
+    '<div class="trend-value">' + formatAmountFull(cur) + '</div>' +
+    '<div class="trend-diff ' + cls + '">' + arrow + ' ' + formatAmountFull(Math.abs(diff)) + pctText + '</div>' +
+  '</div>';
 }
 
 // ── 담당자/결제조건/위험도가 전부 "전체"일 때 표시할 "최근 입금내역" 상태 ──
