@@ -229,25 +229,21 @@ function updateStatus() {
 
 // ── 전체 필터 적용 ──
 function applyFilters() {
-  var filteredCompanies = DATA.companies.filter(function(c) {
-    if (filter.manager !== "전체" && c.manager !== filter.manager) return false;
-    if (filter.paytype !== "전체" && c.paytype !== filter.paytype) return false;
+  // DATA.companies의 paytype/manager 태그는 그 거래처가 "처음 집계된 인보이스" 기준으로
+  // 딱 하나만 저장돼 있어서(매크로 집계 로직상), 한 거래처가 결제조건을 섞어 쓰는 경우
+  // 회사 단위 필터링(c.paytype === filter.paytype)으로는 실제 미수금과 어긋날 수 있다
+  // (해당 안 되는 다른 결제조건 금액까지 합쳐지거나, 반대로 통째로 빠지는 문제).
+  // 그래서 항상 인보이스(DATA.records) 단위로 직접 필터링해서 정확한 금액만 합산한다.
+  var filteredRecords = DATA.records.filter(function(r) {
+    if (filter.manager !== "전체" && r.manager !== filter.manager) return false;
+    if (filter.paytype !== "전체" && r.paytype !== filter.paytype) return false;
+    if (r.misooamt <= 0) return false;
+    if (filter.risk !== "전체" && calcRisk(r.saledate, r.paytype).label !== filter.risk) return false;
     return true;
   });
-  var displayCompanies;
-  if (filter.risk !== "전체") {
-    var riskRecords = DATA.records.filter(function(r) {
-      if (filter.manager !== "전체" && r.manager !== filter.manager) return false;
-      if (filter.paytype !== "전체" && r.paytype !== filter.paytype) return false;
-      if (r.misooamt <= 0) return false;
-      return calcRisk(r.saledate, r.paytype).label === filter.risk;
-    });
-    var companyMap = {};
-    riskRecords.forEach(function(r) { if (!companyMap[r.company]) companyMap[r.company] = 0; companyMap[r.company] += r.misooamt; });
-    displayCompanies = Object.keys(companyMap).map(function(n) { return { name: n, amount: companyMap[n] }; }).sort(function(a, b) { return b.amount - a.amount; });
-  } else {
-    displayCompanies = filteredCompanies;
-  }
+  var companyMap = {};
+  filteredRecords.forEach(function(r) { if (!companyMap[r.company]) companyMap[r.company] = 0; companyMap[r.company] += r.misooamt; });
+  var displayCompanies = Object.keys(companyMap).map(function(n) { return { name: n, amount: companyMap[n] }; }).sort(function(a, b) { return b.amount - a.amount; });
   var total = displayCompanies.reduce(function(sum, c) { return sum + c.amount; }, 0);
   currentMisooTotal = total; // 우측 트렌드 위젯의 "미수 총액"이 이 값을 그대로 바인딩해서 씀
   setKpiText("kpi-total", formatAmount(total));
@@ -308,6 +304,22 @@ function renderTrendWidget() {
   var companyInfo = {};
   (DATA.companies || []).forEach(function(c) { companyInfo[c.name] = c; });
 
+  // 결제조건 필터가 걸려 있을 때, 입금을 어느 거래처 것까지 포함할지 판정하는 집합.
+  // DATA.companies의 c.paytype 태그는 그 거래처가 "처음 집계된 인보이스" 하나의 결제조건일
+  // 뿐이라(매크로 집계 로직상), 한 거래처가 결제조건을 섞어 쓰는 경우 그 태그만으로
+  // 걸러내면 실제로 발생한 입금이 통째로 0으로 빠지는 문제가 있었다. 그래서 태그 대신
+  // DATA.records를 직접 훑어 "현재 결제조건 필터에 해당하는 매출 건이 실제로 있는 거래처"를
+  // 구해서 그 거래처의 입금만 포함시킨다(담당자는 거래처가 바뀌는 일이 거의 없어 태그 그대로 사용).
+  var paytypeCompanySet = null;
+  if (filter.paytype !== "전체") {
+    paytypeCompanySet = {};
+    DATA.records.forEach(function(r) {
+      if (filter.manager !== "전체" && r.manager !== filter.manager) return;
+      if (r.paytype !== filter.paytype) return;
+      paytypeCompanySet[r.company] = true;
+    });
+  }
+
   var thisM = rollingRangeSerial(0);
   var lastM = rollingRangeSerial(1);
 
@@ -325,7 +337,7 @@ function renderTrendWidget() {
     return (DATA.deposits || []).reduce(function(sum, d) {
       var info = companyInfo[d.company];
       if (filter.manager !== "전체" && (!info || info.manager !== filter.manager)) return sum;
-      if (filter.paytype !== "전체" && (!info || info.paytype !== filter.paytype)) return sum;
+      if (paytypeCompanySet && !paytypeCompanySet[d.company]) return sum;
       if (d.date < fromS || d.date > toS) return sum;
       return sum + d.amount;
     }, 0);
