@@ -663,11 +663,19 @@ body {
 /* 지연/예정 거래처 목록 옆에 여는 인보이스별 상세 팝업 - 기본 숨김, .show일 때만 나란히 노출 */
 .trend-detail-modal { display: none; width: 400px; }
 .trend-detail-modal.show { display: flex; }
-/* 거래처명이 길어도 옆 금액 컬럼을 밀어내며 화면 밖으로 넘치지 않도록, 이 표 첫 번째 칸만 줄바꿈 허용 */
-.trend-modal-body .ledger-table td:first-child {
-  white-space: normal;
-  word-break: keep-all;
-}
+/* 거래처명이 길어지면 옆 금액 컬럼을 화면 밖으로 밀어내던 문제 - 표 전체를 팝업 폭에 고정시키고
+   (table-layout:fixed) 컬럼별 비율을 미리 나눠둬서, 첫 컬럼은 줄바꿈되고 나머지 컬럼은 항상
+   팝업 안쪽에 온전히 보이도록 한다. white-space:normal만으로는 table-layout:auto 상태에서
+   브라우저가 줄바꿈 대신 표 자체를 넓혀버려서 소용없었음. */
+.trend-modal-body .ledger-table { table-layout: fixed; }
+.trend-modal-body .ledger-table th:nth-child(1),
+.trend-modal-body .ledger-table td:nth-child(1) { width: 38%; white-space: normal; word-break: keep-all; }
+.trend-modal-body .ledger-table th:nth-child(2),
+.trend-modal-body .ledger-table td:nth-child(2) { width: 22%; overflow: hidden; text-overflow: ellipsis; }
+.trend-modal-body .ledger-table th:nth-child(3),
+.trend-modal-body .ledger-table td:nth-child(3) { width: 14%; overflow: hidden; text-overflow: ellipsis; }
+.trend-modal-body .ledger-table th:nth-child(4),
+.trend-modal-body .ledger-table td:nth-child(4) { width: 26%; overflow: hidden; text-overflow: ellipsis; }
 .trend-modal-header {
   display: flex;
   align-items: center;
