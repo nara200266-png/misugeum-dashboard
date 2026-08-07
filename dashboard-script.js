@@ -1157,6 +1157,13 @@ function closeLedger() {
   alignFundIssueCard();
 }
 
+// ── 담당자별 미수금 차트(막대/도넛) 색상 지정 오버라이드. CHART_COLORS 팔레트는 매크로 쪽에서
+//    정의되는데(fn_데이터만), 이건 매크로를 재실행 안 해도 되도록 여기(JS)에 자체적으로 둔다 -
+//    이 파일은 생성할 때마다 GitHub에서 즉시 새로 받아오지만, 매크로 코드는 사용자가 직접
+//    엑셀 VBA에 반영해야만 바뀌기 때문에, 매크로 쪽 값에 의존하면 "JS는 최신인데 매크로는
+//    구버전"인 상태에서 정의되지 않은 변수를 참조해 전체 렌더링이 멈추는 문제가 생길 수 있다.
+var MANAGER_COLOR_OVERRIDE = { "송동열": "#29B6F6" };
+
 // ── 차트 렌더링 ──
 function renderCharts(managers, selectedManager) {
   if (chartBar) chartBar.destroy();
