@@ -383,6 +383,8 @@ function renderTrendWidget() {
   var todayYM = serialToYM(dateToSerial(DATA.today));
   var todayIdx = todayYM.y * 12 + todayYM.m;
   var dueThisMonth = 0, overdue = 0;
+  trendModalLists.due = [];
+  trendModalLists.overdue = [];
   DATA.records.forEach(function(r) {
     if (r.misooamt <= 0) return;
     if (filter.manager !== "전체" && r.manager !== filter.manager) return;
@@ -391,8 +393,8 @@ function renderTrendWidget() {
     var saleYM = serialToYM(r.saledate);
     var expected = addMonths(saleYM.y, saleYM.m, r.paytype === '7일이내 결제' ? 0 : 1);
     var expectedIdx = expected.y * 12 + expected.m;
-    if (expectedIdx === todayIdx) dueThisMonth += r.misooamt;
-    else if (expectedIdx < todayIdx) overdue += r.misooamt;
+    if (expectedIdx === todayIdx) { dueThisMonth += r.misooamt; trendModalLists.due.push(r); }
+    else if (expectedIdx < todayIdx) { overdue += r.misooamt; trendModalLists.overdue.push(r); }
   });
 
   // 최근 6개월(달력 기준) 매출·입금 추이 - 그래프용
@@ -422,13 +424,22 @@ function renderTrendWidget() {
       trendRow('입금 총액', depThis, depLast) +
       trendRow('미수 총액', misooToday, misoo30dAgo, true) +
       '<div class="trend-micro">' +
-        '<div class="trend-micro-item"><span class="trend-micro-label">당월 수금 예정</span><span class="trend-micro-value">' + formatAmount(dueThisMonth) + '</span></div>' +
-        '<div class="trend-micro-item"><span class="trend-micro-label">지연 미수금</span><span class="trend-micro-value warn">' + formatAmount(overdue) + '</span></div>' +
+        '<div class="trend-micro-item"><span class="trend-micro-label">당월 수금 예정</span>' +
+          '<span class="trend-badge due" onclick="openTrendModal(\'due\')">' + formatAmount(dueThisMonth) + '</span></div>' +
+        '<div class="trend-micro-item"><span class="trend-micro-label">지연 미수금</span>' +
+          '<span class="trend-badge overdue" onclick="openTrendModal(\'overdue\')">' + formatAmount(overdue) + '</span></div>' +
       '</div>' +
       '<div class="trend-period">' + (filter.risk !== "전체" ? '위험도는 매출에만 적용됨 · ' : '') +
         (filter.paytype !== "전체" ? '입금액은 거래처 단위 집계(결제조건 혼용 거래처는 추정치) · ' : '') +
         '최근 30일 ' + formatDate(thisM.from) + '~' + formatDate(thisM.to) +
         ' · 이전 30일 ' + formatDate(lastM.from) + '~' + formatDate(lastM.to) + '</div>' +
+    '</div>' +
+    '<div class="trend-modal-backdrop" id="trend-modal-backdrop" onclick="closeTrendModal()">' +
+      '<div class="trend-modal" onclick="event.stopPropagation()">' +
+        '<div class="trend-modal-header"><span id="trend-modal-title"></span>' +
+          '<button class="trend-modal-close" onclick="closeTrendModal()">✕</button></div>' +
+        '<div class="trend-modal-body" id="trend-modal-body"></div>' +
+      '</div>' +
     '</div>';
 
   if (chartTrend) chartTrend.destroy();
@@ -479,7 +490,7 @@ function trendRow(label, cur, prev, highlight) {
     '<div class="trend-label">' + label + '</div>' +
     '<div class="trend-value-group">' +
       '<span class="trend-value">' + formatAmountFull(cur) + ' <span class="trend-value-short">(' + formatAmount(cur) + ')</span></span>' +
-      '<span class="trend-diff ' + cls + '">' + arrow + ' ' + formatAmountFull(Math.abs(diff)) + pctText + '</span>' +
+      '<span class="trend-diff ' + cls + '">' + arrow + ' ' + formatAmountFull(Math.abs(diff)) + ' (' + formatAmount(Math.abs(diff)) + ')' + pctText + '</span>' +
     '</div>' +
   '</div>';
 }
@@ -494,6 +505,50 @@ var chartTrend = null;
 //    쓰도록 단일 소스로 관리하는 변수. applyFilters()에서만 값을 세팅하고,
 //    renderTrendWidget()은 이 값을 그대로 읽기만 한다(별도 재계산 금지).
 var currentMisooTotal = 0;
+
+// ── "당월 수금 예정"/"지연 미수금" 뱃지 클릭 시 뜨는 모달에 표시할 거래처 목록.
+//    renderTrendWidget()이 매번 최신 필터 기준으로 채워두고, 모달은 그걸 그대로 읽기만 한다.
+var trendModalLists = { due: [], overdue: [] };
+
+function openTrendModal(type) {
+  var backdrop = document.getElementById('trend-modal-backdrop');
+  var body = document.getElementById('trend-modal-body');
+  var titleEl = document.getElementById('trend-modal-title');
+  if (!backdrop || !body || !titleEl) return;
+
+  var list = trendModalLists[type] || [];
+  var title = type === 'due' ? '당월 수금 예정 거래처' : '지연 미수금 거래처';
+
+  var byCompany = {};
+  list.forEach(function(r) {
+    if (!byCompany[r.company]) byCompany[r.company] = { name: r.company, amount: 0, count: 0 };
+    byCompany[r.company].amount += r.misooamt;
+    byCompany[r.company].count += 1;
+  });
+  var companies = Object.keys(byCompany).map(function(k) { return byCompany[k]; })
+    .sort(function(a, b) { return b.amount - a.amount; });
+
+  titleEl.textContent = title + ' (' + companies.length + '개사)';
+  if (companies.length === 0) {
+    body.innerHTML = '<div style="padding:30px;text-align:center;color:#6B7A94">해당 내역이 없습니다</div>';
+  } else {
+    var total = companies.reduce(function(s, c) { return s + c.amount; }, 0);
+    var rows = companies.map(function(c) {
+      return '<tr><td class="ledger-link" style="cursor:pointer" onclick="closeTrendModal();showLedger(\'' + c.name.replace(/'/g, "\\'") + '\')">' + c.name + '</td>' +
+        '<td>' + c.count + '건</td>' +
+        '<td style="text-align:right;font-weight:700">' + formatAmountFull(c.amount) + '</td></tr>';
+    }).join('');
+    body.innerHTML = '<table class="ledger-table"><thead><tr><th>거래처</th><th>건수</th><th style="text-align:right">미수금</th></tr></thead>' +
+      '<tbody>' + rows + '</tbody>' +
+      '<tfoot><tr class="ledger-foot"><td colspan="2">합계</td><td style="text-align:right">' + formatAmountFull(total) + '</td></tr></tfoot></table>';
+  }
+  backdrop.classList.add('show');
+}
+
+function closeTrendModal() {
+  var backdrop = document.getElementById('trend-modal-backdrop');
+  if (backdrop) backdrop.classList.remove('show');
+}
 
 function formatDateInput(d) {
   var y = d.getFullYear();
@@ -550,24 +605,66 @@ function renderDepositTable(searchQuery) {
 
   var rows = '';
   deposits.forEach(function(d) {
-    var productSub = (d.source === '카드' && d.product) ? '<div class="deposit-product">' + d.product + '</div>' : '';
     rows += '<tr class="ledger-row deposit">';
-    rows += '<td>' + formatDate(d.date) + productSub + '</td>';
+    rows += '<td>' + formatDate(d.date) + '</td>';
     rows += '<td class="ledger-link" style="cursor:pointer" onclick="showLedger(\'' + (d.company || '').replace(/'/g, "\\'") + '\')">' + (d.company || '-') + '</td>';
-    rows += '<td>' + depositSourceLabel(d.source) + '</td>';
     rows += '<td style="text-align:right;font-weight:600;color:#0F7B52">' + formatAmountFull(d.amount) + '</td>';
+    rows += '<td>' + depositSourceLabel(d.source) + '</td>';
     rows += '</tr>';
   });
 
   var total = deposits.reduce(function(s, d) { return s + d.amount; }, 0);
 
-  var html = '<div class="ledger-table-wrap" style="margin:0 18px 18px">';
+  // 거래처명 바로 옆에서 금액을 확인할 수 있도록 [입금일→거래처→입금액→출처] 순으로 재배치하고,
+  // 표 폭을 줄여서 생기는 우측 여백에는 '집중 관리 대상(Top 5 악성 미수 거래처)'를 나란히 배치한다.
+  var html = '<div class="deposit-split-row">';
+  html += '<div class="deposit-table-col"><div class="ledger-table-wrap">';
   html += '<table class="ledger-table">';
-  html += '<thead><tr><th>입금일</th><th>거래처</th><th>출처</th><th style="text-align:right">입금액</th></tr></thead>';
+  html += '<thead><tr><th>입금일</th><th>거래처</th><th style="text-align:right">입금액</th><th>출처</th></tr></thead>';
   html += '<tbody>' + rows + '</tbody>';
-  html += '<tfoot><tr class="ledger-foot"><td colspan="3">합계 (' + deposits.length + '건)</td><td style="text-align:right;color:#0F7B52">' + formatAmountFull(total) + '</td></tr></tfoot>';
-  html += '</table></div>';
+  html += '<tfoot><tr class="ledger-foot"><td colspan="2">합계 (' + deposits.length + '건)</td><td style="text-align:right;color:#0F7B52">' + formatAmountFull(total) + '</td><td></td></tr></tfoot>';
+  html += '</table></div></div>';
+  html += '<div class="top-baddebt-col">' + buildTopBadDebtHtml() + '</div>';
+  html += '</div>';
   container.innerHTML = html;
+}
+
+// ── 집중 관리 대상: 위험/심각 등급 미수금을 거래처 단위로 합산해 상위 5개사 ──
+function buildTopBadDebtHtml() {
+  var byCompany = {};
+  DATA.records.forEach(function(r) {
+    if (r.misooamt <= 0) return;
+    var risk = calcRisk(r.saledate, r.paytype);
+    if (risk.level !== "danger" && risk.level !== "critical") return;
+    if (!byCompany[r.company]) byCompany[r.company] = { name: r.company, amount: 0, maxDays: 0, worstLabel: risk.label, worstLevel: risk.level };
+    byCompany[r.company].amount += r.misooamt;
+    if (risk.days > byCompany[r.company].maxDays) {
+      byCompany[r.company].maxDays = risk.days;
+      byCompany[r.company].worstLabel = risk.label;
+      byCompany[r.company].worstLevel = risk.level;
+    }
+  });
+  var top5 = Object.keys(byCompany).map(function(k) { return byCompany[k]; })
+    .sort(function(a, b) { return b.amount - a.amount; })
+    .slice(0, 5);
+
+  var html = '<div class="baddebt-panel">';
+  html += '<div class="baddebt-title">집중 관리 대상 <span class="baddebt-title-sub">(Top 5 악성 미수 거래처)</span></div>';
+  if (top5.length === 0) {
+    html += '<div class="baddebt-empty">위험/심각 등급 미수금이 없습니다</div>';
+  } else {
+    html += '<table class="baddebt-table"><thead><tr><th>거래처</th><th>위험도</th><th style="text-align:right">미수금</th></tr></thead><tbody>';
+    top5.forEach(function(c) {
+      html += '<tr>';
+      html += '<td class="ledger-link" style="cursor:pointer" onclick="showLedger(\'' + c.name.replace(/'/g, "\\'") + '\')">' + c.name + '</td>';
+      html += '<td><span class="risk-dot ' + c.worstLevel + '"></span>' + c.worstLabel + '</td>';
+      html += '<td style="text-align:right;font-weight:700;color:var(--빨강)">' + formatAmountFull(c.amount) + '</td>';
+      html += '</tr>';
+    });
+    html += '</tbody></table>';
+  }
+  html += '</div>';
+  return html;
 }
 
 // ── 미수 테이블 렌더링 ──

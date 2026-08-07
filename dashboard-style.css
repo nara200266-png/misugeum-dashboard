@@ -382,11 +382,6 @@ body {
   color: var(--회색글자);
   margin-top: 3px;
 }
-.deposit-product {
-  font-size: 11px;
-  color: var(--회색글자);
-  margin-top: 2px;
-}
 .ledger-close {
   background: var(--흰색);
   border: 1px solid var(--테두리);
@@ -628,6 +623,90 @@ body {
 
 .trend-period { font-size: 10px; color: var(--회색글자); margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--테두리); }
 
+/* 당월 수금 예정 / 지연 미수금 - 클릭해서 상세 거래처 모달을 여는 뱃지 */
+.trend-badge {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 99px;
+  cursor: pointer;
+  transition: filter .15s;
+}
+.trend-badge:hover { filter: brightness(0.95); }
+.trend-badge.due     { background: #E3F2FD; color: #0D5CAB; }
+.trend-badge.overdue { background: #FAE1DE; color: var(--빨강); }
+
+/* 당월 수금 예정/지연 미수금 뱃지 클릭 시 뜨는 거래처 상세 모달 */
+.trend-modal-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(20,30,50,.45);
+  z-index: 1000;
+  align-items: center;
+  justify-content: center;
+}
+.trend-modal-backdrop.show { display: flex; }
+.trend-modal {
+  background: var(--흰색);
+  border-radius: 12px;
+  width: 420px;
+  max-width: 92vw;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 28px rgba(0,0,0,.22);
+}
+.trend-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--테두리);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--글자색);
+}
+.trend-modal-close {
+  border: none;
+  background: none;
+  font-size: 15px;
+  color: var(--회색글자);
+  cursor: pointer;
+  line-height: 1;
+  padding: 2px 4px;
+}
+.trend-modal-body { overflow: auto; padding: 4px 18px 18px; }
+
+/* 최근 입금내역 표를 축소하고 남는 오른쪽 공간에 Top 5 악성 미수 거래처를 나란히 배치 */
+.deposit-split-row { display: flex; gap: 14px; align-items: flex-start; padding: 0 18px 18px; }
+.deposit-table-col { flex: 0 0 56%; min-width: 0; }
+.deposit-table-col .ledger-table-wrap { margin: 0; }
+.top-baddebt-col { flex: 1; min-width: 0; }
+
+.baddebt-panel {
+  background: var(--흰색);
+  border: 1px solid var(--테두리);
+  border-radius: 10px;
+  padding: 12px 14px;
+  height: 100%;
+}
+.baddebt-title { font-size: 12px; font-weight: 700; color: var(--글자색); margin-bottom: 8px; }
+.baddebt-title-sub { font-size: 10px; font-weight: 500; color: var(--회색글자); }
+.baddebt-empty { font-size: 11px; color: var(--회색글자); padding: 10px 0; }
+.baddebt-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+.baddebt-table thead th {
+  text-align: left;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--회색글자);
+  padding: 4px 4px;
+  border-bottom: 1px solid var(--테두리);
+}
+.baddebt-table td { padding: 6px 4px; border-top: 1px solid var(--테두리); }
+.baddebt-table tbody tr:first-child td { border-top: none; }
+
 /* ══════════════════════════════════════════
    모바일 반응형 (900px 이하)
    PC 화면(위 스타일)은 그대로 두고, 좁은 화면에서만 아래 내용이 덮어씀.
@@ -734,4 +813,11 @@ body {
 
   /* 원장 테이블(날짜순 통합 등도 컬럼이 많아 옆으로 스크롤) */
   .ledger-table { font-size: 10px; }
+
+  /* 최근 입금내역 + Top5 악성 미수 - 좁은 화면에서는 좌우 분할 대신 위아래로 */
+  .deposit-split-row { flex-direction: column; padding: 0 12px 12px; }
+  .deposit-table-col { flex: 1 1 auto; width: 100%; }
+
+  .trend-modal { width: 92vw; }
+  .trend-modal-body { padding: 4px 12px 14px; }
 }
