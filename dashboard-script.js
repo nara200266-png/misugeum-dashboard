@@ -521,9 +521,11 @@ function openTrendModal(type) {
 
   var byCompany = {};
   list.forEach(function(r) {
-    if (!byCompany[r.company]) byCompany[r.company] = { name: r.company, amount: 0, count: 0 };
+    if (!byCompany[r.company]) byCompany[r.company] = { name: r.company, amount: 0, count: 0, oldestDate: r.saledate };
     byCompany[r.company].amount += r.misooamt;
     byCompany[r.company].count += 1;
+    // 지연/예정 판단은 결국 매출일 기준이라, 여러 건 중 가장 오래된(가장 급한) 매출일을 대표로 보여준다
+    if (r.saledate < byCompany[r.company].oldestDate) byCompany[r.company].oldestDate = r.saledate;
   });
   var companies = Object.keys(byCompany).map(function(k) { return byCompany[k]; })
     .sort(function(a, b) { return b.amount - a.amount; });
@@ -535,12 +537,13 @@ function openTrendModal(type) {
     var total = companies.reduce(function(s, c) { return s + c.amount; }, 0);
     var rows = companies.map(function(c) {
       return '<tr><td class="ledger-link" style="cursor:pointer" onclick="closeTrendModal();showLedger(\'' + c.name.replace(/'/g, "\\'") + '\')">' + c.name + '</td>' +
+        '<td>' + formatDate(c.oldestDate) + (c.count > 1 ? ' 외' : '') + '</td>' +
         '<td>' + c.count + '건</td>' +
         '<td style="text-align:right;font-weight:700">' + formatAmountFull(c.amount) + '</td></tr>';
     }).join('');
-    body.innerHTML = '<table class="ledger-table"><thead><tr><th>거래처</th><th>건수</th><th style="text-align:right">미수금</th></tr></thead>' +
+    body.innerHTML = '<table class="ledger-table"><thead><tr><th>거래처</th><th>매출일</th><th>건수</th><th style="text-align:right">미수금</th></tr></thead>' +
       '<tbody>' + rows + '</tbody>' +
-      '<tfoot><tr class="ledger-foot"><td colspan="2">합계</td><td style="text-align:right">' + formatAmountFull(total) + '</td></tr></tfoot></table>';
+      '<tfoot><tr class="ledger-foot"><td colspan="3">합계</td><td style="text-align:right">' + formatAmountFull(total) + '</td></tr></tfoot></table>';
   }
   backdrop.classList.add('show');
 }
