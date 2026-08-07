@@ -276,15 +276,7 @@ function applyFilters() {
   document.getElementById("chart-all").style.display = isAll ? '' : 'none';
   document.getElementById("chart-manager").style.display = isAll ? 'none' : '';
   var chartManagers = isAll ? DATA.managers : DATA.managers.filter(function(m) { return m.name === filter.manager; });
-  // display:none → 보임으로 바꾼 "직후" 같은 동기 흐름에서 바로 차트를 만들면, 브라우저가 아직
-  // 레이아웃(컨테이너의 실제 픽셀 크기)을 계산하기 전이라 Chart.js가 크기를 0으로 읽어버릴 수
-  // 있다. requestAnimationFrame을 두 번 중첩하면 "다음 프레임이 그려지기 직전"까지 미뤄져서,
-  // 그 시점엔 위 style.display 변경이 레이아웃에 확실히 반영된 뒤라 크기를 제대로 잰다.
-  requestAnimationFrame(function() {
-    requestAnimationFrame(function() {
-      renderCharts(chartManagers, filter.manager);
-    });
-  });
+  renderCharts(chartManagers, filter.manager);
   updateStatus();
   renderTable();
   alignFundIssueCard();
@@ -427,7 +419,7 @@ function renderTrendWidget() {
     '<div class="trend-widget">' +
       '<div class="trend-widget-title">최근 6개월 매출·입금 추이</div>' +
       '<div class="trend-widget-sub">현재 필터 기준</div>' +
-      '<div class="chart-wrap" style="height:150px"><canvas id="chart-trend"></canvas></div>' +
+      '<div class="chart-wrap" style="height:150px"><canvas id="chart-trend" width="800" height="150"></canvas></div>' +
       trendRow('매출 총액', saleThis, saleLast) +
       trendRow('입금 총액', depThis, depLast) +
       trendRow('미수 총액', misooToday, misoo30dAgo, true) +
@@ -468,8 +460,7 @@ function renderTrendWidget() {
         ]
       },
       options: {
-        responsive: true,
-        maintainAspectRatio: false,
+        responsive: false,
         plugins: {
           legend: { display: true, position: 'top', align: 'end', labels: { boxWidth: 10, font: { size: 10 } } },
           tooltip: { callbacks: { label: function(ctx) { return ' ' + ctx.dataset.label + ': ' + formatAmountFull(ctx.raw); } } }
@@ -480,7 +471,6 @@ function renderTrendWidget() {
         }
       }
     });
-    chartTrend.resize(); // 안전장치 - 위 다른 차트들과 동일한 이유
   }
 }
 
@@ -1164,16 +1154,8 @@ function closeLedger() {
   var cm = document.getElementById("chart-manager");
   if (cm) cm.style.display = isAll ? "none" : "";
   alignFundIssueCard();
-  // 원장이 열려있던 동안 트렌드 위젯(#chart-placeholder)이 display:none 상태였는데, 그 사이
-  // 필터가 바뀌어 renderTrendWidget()이 숨겨진 채로 다시 그려졌다면 차트가 0 크기로 찌그러진
-  // 채 굳어버릴 수 있다. 다시 보여줄 때 항상 새로 그려서 확실히 정상 크기로 복구하되, display를
-  // 되돌리는 코드 바로 다음 줄에서 곧바로 그리면 브라우저가 레이아웃을 아직 못 끝낸 시점일 수
-  // 있어(applyFilters의 renderCharts와 동일한 이유) 다음 프레임까지 한 번 미룬다.
-  requestAnimationFrame(function() {
-    requestAnimationFrame(function() {
-      renderTrendWidget();
-    });
-  });
+  // 원장이 열려있던 동안 숨겨졌던 매출·입금 추이 차트를 다시 정상적으로 그린다.
+  renderTrendWidget();
 }
 
 // ── 담당자별 미수금 차트(막대/도넛) 색상 지정 오버라이드. CHART_COLORS 팔레트는 매크로 쪽에서
@@ -1183,68 +1165,62 @@ function closeLedger() {
 //    구버전"인 상태에서 정의되지 않은 변수를 참조해 전체 렌더링이 멈추는 문제가 생길 수 있다.
 var MANAGER_COLOR_OVERRIDE = { "송동열": "#29B6F6" };
 
-// 캔버스를 재사용하지 않고 통째로 새 <canvas>로 갈아끼운다. Chart.js는 destroy() 후 같은
-// 캔버스에 새 차트를 만들어도 되는 게 정상이지만, 이 캔버스들은 담당자 필터에 따라 부모가
-// display:none으로 숨겨졌다 다시 보이는 과정을 반복하는데, 그 사이에 Chart.js 내부에 남은
-// 이전 크기 정보(관찰자/캐시)가 안 지워지고 남아서 다시 보여줘도 찌그러진 크기로 굳어버리는
-// 현상이 있었다. 매번 완전히 새 DOM 노드로 바꾸면 그런 잔존 상태가 아예 생길 수 없다.
-function freshCanvas(id) {
+// 캔버스를 재사용하지 않고 통째로 새 <canvas>로 갈아끼운다(destroy 후 같은 캔버스에 새 차트를
+// 만드는 것보다 확실하게 이전 상태를 지운다). 그리고 Chart.js의 반응형(컨테이너 크기를 JS로
+// 측정해서 캔버스 해상도를 맞추는) 방식은 담당자 필터로 컨테이너가 display:none ↔ 표시를
+// 반복하는 이 화면에서 타이밍이 계속 꼬여 차트가 찌그러진 크기로 굳어버리는 문제가 있었다.
+// 그래서 아예 JS 측정에 의존하지 않는다 - 캔버스 해상도는 width/height 속성으로 고정값을
+// 박아두고, 화면에 보이는 크기는 CSS(width:100%;height:100%, dashboard-style.css)가 항상
+// 그 순간의 박스 크기에 맞춰 늘려서 그리게 한다. Chart.js 쪽 옵션도 responsive:false로 꺼서
+// Chart.js가 크기를 재측정/재조정하려는 시도 자체를 하지 않도록 한다.
+function freshCanvas(id, w, h) {
   var old = document.getElementById(id);
   if (!old) return null;
   var wrap = old.parentElement;
-  wrap.innerHTML = '<canvas id="' + id + '"></canvas>';
+  wrap.innerHTML = '<canvas id="' + id + '" width="' + w + '" height="' + h + '"></canvas>';
   return document.getElementById(id);
 }
 
 // ── 차트 렌더링 ──
-// 주의: chart-bar/chart-donut(#chart-all)와 chart-paytype-*(#chart-manager)는 담당자 필터에 따라
-// 서로 번갈아 display:none으로 숨겨지는데(applyFilters), 캔버스가 display:none인 상태에서
-// Chart.js 차트를 새로 만들면 컨테이너 크기를 0으로 측정해버려서 이후 다시 보여줘도 차트가
-// 찌그러진/작아진 크기로 굳어버리는 문제가 있었다(Chart.js의 흔한 "숨김 상태에서 생성" 버그).
-// 그래서 지금 실제로 보이는 쪽의 차트만 만들고, 숨겨진 쪽은 아예 건드리지 않는다.
 function renderCharts(managers, selectedManager) {
   var isAll = selectedManager === "전체";
 
   if (isAll) {
     if (chartBar) chartBar.destroy();
-    chartBar = new Chart(freshCanvas("chart-bar").getContext("2d"), {
+    chartBar = new Chart(freshCanvas("chart-bar", 400, 150).getContext("2d"), {
       type: 'bar',
       data: {
         labels: managers.map(function(m) { return m.name; }),
         datasets: [{ data: managers.map(function(m) { return m.amount; }), backgroundColor: managers.map(function(m, i) { return MANAGER_COLOR_OVERRIDE[m.name] || CHART_COLORS[i % CHART_COLORS.length]; }), borderRadius: 6, borderSkipped: false }]
       },
-      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: function(ctx) { return ' ' + formatAmountFull(ctx.raw); } } } }, scales: { x: { grid: { display: false } }, y: { ticks: { callback: function(v) { return formatAmount(v); } } } } }
+      options: { responsive: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: function(ctx) { return ' ' + formatAmountFull(ctx.raw); } } } }, scales: { x: { grid: { display: false } }, y: { ticks: { callback: function(v) { return formatAmount(v); } } } } }
     });
-    chartBar.resize(); // freshCanvas + rAF 지연으로 이미 정상 크기를 잡지만, 혹시 모를 경우를 대비한 안전장치
     if (chartDonut) chartDonut.destroy();
-    chartDonut = new Chart(freshCanvas("chart-donut").getContext("2d"), {
+    chartDonut = new Chart(freshCanvas("chart-donut", 400, 150).getContext("2d"), {
       type: 'doughnut',
       data: {
         labels: managers.map(function(m) { return m.name; }),
         datasets: [{ data: managers.map(function(m) { return m.amount; }), backgroundColor: managers.map(function(m, i) { return MANAGER_COLOR_OVERRIDE[m.name] || CHART_COLORS[i % CHART_COLORS.length]; }), borderWidth: 2, borderColor: '#fff' }]
       },
-      options: { responsive: true, maintainAspectRatio: false, cutout: '60%', plugins: { legend: { position: 'right' }, tooltip: { callbacks: { label: function(ctx) { return ' ' + ctx.label + ': ' + formatAmountFull(ctx.raw); } } } } }
+      options: { responsive: false, cutout: '60%', plugins: { legend: { position: 'right' }, tooltip: { callbacks: { label: function(ctx) { return ' ' + ctx.label + ': ' + formatAmountFull(ctx.raw); } } } } }
     });
-    chartDonut.resize();
   }
 
   if (!isAll && DATA.paytypes[selectedManager]) {
     var paytypeData = DATA.paytypes[selectedManager];
     document.getElementById("chart-manager-title").textContent = selectedManager + " 결제조건별 미수금 비중";
     if (chartPaytypeDonut) chartPaytypeDonut.destroy();
-    chartPaytypeDonut = new Chart(freshCanvas("chart-paytype-donut").getContext("2d"), {
+    chartPaytypeDonut = new Chart(freshCanvas("chart-paytype-donut", 400, 150).getContext("2d"), {
       type: 'doughnut',
       data: { labels: paytypeData.map(function(p) { return p.name; }), datasets: [{ data: paytypeData.map(function(p) { return p.amount; }), backgroundColor: paytypeData.map(function(p) { return PAYTYPE_COLORS[p.name] || '#ccc'; }), borderWidth: 2, borderColor: '#fff' }] },
-      options: { responsive: true, maintainAspectRatio: false, cutout: '60%', plugins: { legend: { position: 'right' }, tooltip: { callbacks: { label: function(ctx) { return ' ' + ctx.label + ': ' + formatAmountFull(ctx.raw); } } } } }
+      options: { responsive: false, cutout: '60%', plugins: { legend: { position: 'right' }, tooltip: { callbacks: { label: function(ctx) { return ' ' + ctx.label + ': ' + formatAmountFull(ctx.raw); } } } } }
     });
-    chartPaytypeDonut.resize();
     if (chartPaytypeBar) chartPaytypeBar.destroy();
-    chartPaytypeBar = new Chart(freshCanvas("chart-paytype-bar").getContext("2d"), {
+    chartPaytypeBar = new Chart(freshCanvas("chart-paytype-bar", 400, 150).getContext("2d"), {
       type: 'bar',
       data: { labels: paytypeData.map(function(p) { return p.name; }), datasets: [{ data: paytypeData.map(function(p) { return p.amount; }), backgroundColor: paytypeData.map(function(p) { return PAYTYPE_COLORS[p.name] || '#ccc'; }), borderRadius: 6, borderSkipped: false }] },
-      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: function(ctx) { return ' ' + formatAmountFull(ctx.raw); } } } }, scales: { x: { grid: { display: false } }, y: { ticks: { callback: function(v) { return formatAmount(v); } } } } }
+      options: { responsive: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: function(ctx) { return ' ' + formatAmountFull(ctx.raw); } } } }, scales: { x: { grid: { display: false } }, y: { ticks: { callback: function(v) { return formatAmount(v); } } } } }
     });
-    chartPaytypeBar.resize();
   }
 }
 

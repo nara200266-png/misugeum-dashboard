@@ -175,6 +175,15 @@ body {
   position: relative;
   height: 150px;
 }
+/* 차트 캔버스는 이제 Chart.js의 반응형(JS로 크기 재측정) 기능을 끄고(responsive:false) 고정
+   해상도로 그리는 대신, 화면에 보이는 크기는 여기 CSS가 그 순간의 박스 크기에 맞춰 항상
+   늘려서 그린다 - 필터로 컨테이너가 숨겨졌다 다시 보여도 JS 타이밍과 무관하게 항상 박스에
+   꽉 차게 나온다(담당자 필터 전환 시 차트가 찌그러진 크기로 굳어버리던 문제의 근본 해결). */
+.chart-wrap canvas {
+  width: 100% !important;
+  height: 100% !important;
+  display: block;
+}
 #fund-issue-body {
   /* 내부 스크롤 없이 전부 표시 - 페이지 전체 스크롤을 따라감 */
 }
