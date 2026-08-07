@@ -382,6 +382,11 @@ body {
   color: var(--회색글자);
   margin-top: 3px;
 }
+.deposit-product {
+  font-size: 11px;
+  color: var(--회색글자);
+  margin-top: 2px;
+}
 .ledger-close {
   background: var(--흰색);
   border: 1px solid var(--테두리);

@@ -550,8 +550,9 @@ function renderDepositTable(searchQuery) {
 
   var rows = '';
   deposits.forEach(function(d) {
+    var productSub = (d.source === '카드' && d.product) ? '<div class="deposit-product">' + d.product + '</div>' : '';
     rows += '<tr class="ledger-row deposit">';
-    rows += '<td>' + formatDate(d.date) + '</td>';
+    rows += '<td>' + formatDate(d.date) + productSub + '</td>';
     rows += '<td class="ledger-link" style="cursor:pointer" onclick="showLedger(\'' + (d.company || '').replace(/'/g, "\\'") + '\')">' + (d.company || '-') + '</td>';
     rows += '<td>' + depositSourceLabel(d.source) + '</td>';
     rows += '<td style="text-align:right;font-weight:600;color:#0F7B52">' + formatAmountFull(d.amount) + '</td>';
