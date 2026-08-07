@@ -276,7 +276,15 @@ function applyFilters() {
   document.getElementById("chart-all").style.display = isAll ? '' : 'none';
   document.getElementById("chart-manager").style.display = isAll ? 'none' : '';
   var chartManagers = isAll ? DATA.managers : DATA.managers.filter(function(m) { return m.name === filter.manager; });
-  renderCharts(chartManagers, filter.manager);
+  // display:none → 보임으로 바꾼 "직후" 같은 동기 흐름에서 바로 차트를 만들면, 브라우저가 아직
+  // 레이아웃(컨테이너의 실제 픽셀 크기)을 계산하기 전이라 Chart.js가 크기를 0으로 읽어버릴 수
+  // 있다. requestAnimationFrame을 두 번 중첩하면 "다음 프레임이 그려지기 직전"까지 미뤄져서,
+  // 그 시점엔 위 style.display 변경이 레이아웃에 확실히 반영된 뒤라 크기를 제대로 잰다.
+  requestAnimationFrame(function() {
+    requestAnimationFrame(function() {
+      renderCharts(chartManagers, filter.manager);
+    });
+  });
   updateStatus();
   renderTable();
   alignFundIssueCard();
@@ -472,6 +480,7 @@ function renderTrendWidget() {
         }
       }
     });
+    chartTrend.resize(); // 안전장치 - 위 다른 차트들과 동일한 이유
   }
 }
 
@@ -1157,8 +1166,14 @@ function closeLedger() {
   alignFundIssueCard();
   // 원장이 열려있던 동안 트렌드 위젯(#chart-placeholder)이 display:none 상태였는데, 그 사이
   // 필터가 바뀌어 renderTrendWidget()이 숨겨진 채로 다시 그려졌다면 차트가 0 크기로 찌그러진
-  // 채 굳어버릴 수 있다. 다시 보여줄 때 항상 새로 그려서 확실히 정상 크기로 복구한다.
-  renderTrendWidget();
+  // 채 굳어버릴 수 있다. 다시 보여줄 때 항상 새로 그려서 확실히 정상 크기로 복구하되, display를
+  // 되돌리는 코드 바로 다음 줄에서 곧바로 그리면 브라우저가 레이아웃을 아직 못 끝낸 시점일 수
+  // 있어(applyFilters의 renderCharts와 동일한 이유) 다음 프레임까지 한 번 미룬다.
+  requestAnimationFrame(function() {
+    requestAnimationFrame(function() {
+      renderTrendWidget();
+    });
+  });
 }
 
 // ── 담당자별 미수금 차트(막대/도넛) 색상 지정 오버라이드. CHART_COLORS 팔레트는 매크로 쪽에서
@@ -1200,6 +1215,7 @@ function renderCharts(managers, selectedManager) {
       },
       options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: function(ctx) { return ' ' + formatAmountFull(ctx.raw); } } } }, scales: { x: { grid: { display: false } }, y: { ticks: { callback: function(v) { return formatAmount(v); } } } } }
     });
+    chartBar.resize(); // freshCanvas + rAF 지연으로 이미 정상 크기를 잡지만, 혹시 모를 경우를 대비한 안전장치
     if (chartDonut) chartDonut.destroy();
     chartDonut = new Chart(freshCanvas("chart-donut").getContext("2d"), {
       type: 'doughnut',
@@ -1209,6 +1225,7 @@ function renderCharts(managers, selectedManager) {
       },
       options: { responsive: true, maintainAspectRatio: false, cutout: '60%', plugins: { legend: { position: 'right' }, tooltip: { callbacks: { label: function(ctx) { return ' ' + ctx.label + ': ' + formatAmountFull(ctx.raw); } } } } }
     });
+    chartDonut.resize();
   }
 
   if (!isAll && DATA.paytypes[selectedManager]) {
@@ -1220,12 +1237,14 @@ function renderCharts(managers, selectedManager) {
       data: { labels: paytypeData.map(function(p) { return p.name; }), datasets: [{ data: paytypeData.map(function(p) { return p.amount; }), backgroundColor: paytypeData.map(function(p) { return PAYTYPE_COLORS[p.name] || '#ccc'; }), borderWidth: 2, borderColor: '#fff' }] },
       options: { responsive: true, maintainAspectRatio: false, cutout: '60%', plugins: { legend: { position: 'right' }, tooltip: { callbacks: { label: function(ctx) { return ' ' + ctx.label + ': ' + formatAmountFull(ctx.raw); } } } } }
     });
+    chartPaytypeDonut.resize();
     if (chartPaytypeBar) chartPaytypeBar.destroy();
     chartPaytypeBar = new Chart(freshCanvas("chart-paytype-bar").getContext("2d"), {
       type: 'bar',
       data: { labels: paytypeData.map(function(p) { return p.name; }), datasets: [{ data: paytypeData.map(function(p) { return p.amount; }), backgroundColor: paytypeData.map(function(p) { return PAYTYPE_COLORS[p.name] || '#ccc'; }), borderRadius: 6, borderSkipped: false }] },
       options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: function(ctx) { return ' ' + formatAmountFull(ctx.raw); } } } }, scales: { x: { grid: { display: false } }, y: { ticks: { callback: function(v) { return formatAmount(v); } } } } }
     });
+    chartPaytypeBar.resize();
   }
 }
 
