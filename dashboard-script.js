@@ -1168,6 +1168,19 @@ function closeLedger() {
 //    구버전"인 상태에서 정의되지 않은 변수를 참조해 전체 렌더링이 멈추는 문제가 생길 수 있다.
 var MANAGER_COLOR_OVERRIDE = { "송동열": "#29B6F6" };
 
+// 캔버스를 재사용하지 않고 통째로 새 <canvas>로 갈아끼운다. Chart.js는 destroy() 후 같은
+// 캔버스에 새 차트를 만들어도 되는 게 정상이지만, 이 캔버스들은 담당자 필터에 따라 부모가
+// display:none으로 숨겨졌다 다시 보이는 과정을 반복하는데, 그 사이에 Chart.js 내부에 남은
+// 이전 크기 정보(관찰자/캐시)가 안 지워지고 남아서 다시 보여줘도 찌그러진 크기로 굳어버리는
+// 현상이 있었다. 매번 완전히 새 DOM 노드로 바꾸면 그런 잔존 상태가 아예 생길 수 없다.
+function freshCanvas(id) {
+  var old = document.getElementById(id);
+  if (!old) return null;
+  var wrap = old.parentElement;
+  wrap.innerHTML = '<canvas id="' + id + '"></canvas>';
+  return document.getElementById(id);
+}
+
 // ── 차트 렌더링 ──
 // 주의: chart-bar/chart-donut(#chart-all)와 chart-paytype-*(#chart-manager)는 담당자 필터에 따라
 // 서로 번갈아 display:none으로 숨겨지는데(applyFilters), 캔버스가 display:none인 상태에서
@@ -1179,7 +1192,7 @@ function renderCharts(managers, selectedManager) {
 
   if (isAll) {
     if (chartBar) chartBar.destroy();
-    chartBar = new Chart(document.getElementById("chart-bar").getContext("2d"), {
+    chartBar = new Chart(freshCanvas("chart-bar").getContext("2d"), {
       type: 'bar',
       data: {
         labels: managers.map(function(m) { return m.name; }),
@@ -1188,7 +1201,7 @@ function renderCharts(managers, selectedManager) {
       options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: function(ctx) { return ' ' + formatAmountFull(ctx.raw); } } } }, scales: { x: { grid: { display: false } }, y: { ticks: { callback: function(v) { return formatAmount(v); } } } } }
     });
     if (chartDonut) chartDonut.destroy();
-    chartDonut = new Chart(document.getElementById("chart-donut").getContext("2d"), {
+    chartDonut = new Chart(freshCanvas("chart-donut").getContext("2d"), {
       type: 'doughnut',
       data: {
         labels: managers.map(function(m) { return m.name; }),
@@ -1202,13 +1215,13 @@ function renderCharts(managers, selectedManager) {
     var paytypeData = DATA.paytypes[selectedManager];
     document.getElementById("chart-manager-title").textContent = selectedManager + " 결제조건별 미수금 비중";
     if (chartPaytypeDonut) chartPaytypeDonut.destroy();
-    chartPaytypeDonut = new Chart(document.getElementById("chart-paytype-donut").getContext("2d"), {
+    chartPaytypeDonut = new Chart(freshCanvas("chart-paytype-donut").getContext("2d"), {
       type: 'doughnut',
       data: { labels: paytypeData.map(function(p) { return p.name; }), datasets: [{ data: paytypeData.map(function(p) { return p.amount; }), backgroundColor: paytypeData.map(function(p) { return PAYTYPE_COLORS[p.name] || '#ccc'; }), borderWidth: 2, borderColor: '#fff' }] },
       options: { responsive: true, maintainAspectRatio: false, cutout: '60%', plugins: { legend: { position: 'right' }, tooltip: { callbacks: { label: function(ctx) { return ' ' + ctx.label + ': ' + formatAmountFull(ctx.raw); } } } } }
     });
     if (chartPaytypeBar) chartPaytypeBar.destroy();
-    chartPaytypeBar = new Chart(document.getElementById("chart-paytype-bar").getContext("2d"), {
+    chartPaytypeBar = new Chart(freshCanvas("chart-paytype-bar").getContext("2d"), {
       type: 'bar',
       data: { labels: paytypeData.map(function(p) { return p.name; }), datasets: [{ data: paytypeData.map(function(p) { return p.amount; }), backgroundColor: paytypeData.map(function(p) { return PAYTYPE_COLORS[p.name] || '#ccc'; }), borderRadius: 6, borderSkipped: false }] },
       options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: function(ctx) { return ' ' + formatAmountFull(ctx.raw); } } } }, scales: { x: { grid: { display: false } }, y: { ticks: { callback: function(v) { return formatAmount(v); } } } } }
