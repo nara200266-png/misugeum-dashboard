@@ -434,7 +434,7 @@ function renderTrendWidget() {
         '최근 30일 ' + formatDate(thisM.from) + '~' + formatDate(thisM.to) +
         ' · 이전 30일 ' + formatDate(lastM.from) + '~' + formatDate(lastM.to) + '</div>' +
     '</div>' +
-    '<div class="trend-modal-backdrop" id="trend-modal-backdrop" onclick="closeTrendModal()">' +
+    '<div class="trend-modal-backdrop" id="trend-modal-backdrop">' +
       '<div class="trend-modal" onclick="event.stopPropagation()">' +
         '<div class="trend-modal-header"><span id="trend-modal-title"></span>' +
           '<button class="trend-modal-close" onclick="closeTrendModal()">✕</button></div>' +
