@@ -653,7 +653,7 @@ body {
 .trend-modal {
   background: var(--흰색);
   border-radius: 12px;
-  width: 480px;
+  width: 560px;
   max-width: 92vw;
   max-height: 80vh;
   display: flex;
@@ -661,8 +661,13 @@ body {
   box-shadow: 0 8px 28px rgba(0,0,0,.22);
 }
 /* 지연/예정 거래처 목록 옆에 여는 인보이스별 상세 팝업 - 기본 숨김, .show일 때만 나란히 노출 */
-.trend-detail-modal { display: none; width: 380px; }
+.trend-detail-modal { display: none; width: 400px; }
 .trend-detail-modal.show { display: flex; }
+/* 거래처명이 길어도 옆 금액 컬럼을 밀어내며 화면 밖으로 넘치지 않도록, 이 표 첫 번째 칸만 줄바꿈 허용 */
+.trend-modal-body .ledger-table td:first-child {
+  white-space: normal;
+  word-break: keep-all;
+}
 .trend-modal-header {
   display: flex;
   align-items: center;
