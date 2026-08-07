@@ -1164,7 +1164,7 @@ function renderCharts(managers, selectedManager) {
     type: 'bar',
     data: {
       labels: managers.map(function(m) { return m.name; }),
-      datasets: [{ data: managers.map(function(m) { return m.amount; }), backgroundColor: managers.map(function(_, i) { return CHART_COLORS[i % CHART_COLORS.length]; }), borderRadius: 6, borderSkipped: false }]
+      datasets: [{ data: managers.map(function(m) { return m.amount; }), backgroundColor: managers.map(function(m, i) { return MANAGER_COLOR_OVERRIDE[m.name] || CHART_COLORS[i % CHART_COLORS.length]; }), borderRadius: 6, borderSkipped: false }]
     },
     options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: function(ctx) { return ' ' + formatAmountFull(ctx.raw); } } } }, scales: { x: { grid: { display: false } }, y: { ticks: { callback: function(v) { return formatAmount(v); } } } } }
   });
@@ -1173,7 +1173,7 @@ function renderCharts(managers, selectedManager) {
     type: 'doughnut',
     data: {
       labels: managers.map(function(m) { return m.name; }),
-      datasets: [{ data: managers.map(function(m) { return m.amount; }), backgroundColor: managers.map(function(_, i) { return CHART_COLORS[i % CHART_COLORS.length]; }), borderWidth: 2, borderColor: '#fff' }]
+      datasets: [{ data: managers.map(function(m) { return m.amount; }), backgroundColor: managers.map(function(m, i) { return MANAGER_COLOR_OVERRIDE[m.name] || CHART_COLORS[i % CHART_COLORS.length]; }), borderWidth: 2, borderColor: '#fff' }]
     },
     options: { responsive: true, maintainAspectRatio: false, cutout: '60%', plugins: { legend: { position: 'right' }, tooltip: { callbacks: { label: function(ctx) { return ' ' + ctx.label + ': ' + formatAmountFull(ctx.raw); } } } } }
   });
