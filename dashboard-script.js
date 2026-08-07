@@ -1155,6 +1155,10 @@ function closeLedger() {
   var cm = document.getElementById("chart-manager");
   if (cm) cm.style.display = isAll ? "none" : "";
   alignFundIssueCard();
+  // 원장이 열려있던 동안 트렌드 위젯(#chart-placeholder)이 display:none 상태였는데, 그 사이
+  // 필터가 바뀌어 renderTrendWidget()이 숨겨진 채로 다시 그려졌다면 차트가 0 크기로 찌그러진
+  // 채 굳어버릴 수 있다. 다시 보여줄 때 항상 새로 그려서 확실히 정상 크기로 복구한다.
+  renderTrendWidget();
 }
 
 // ── 담당자별 미수금 차트(막대/도넛) 색상 지정 오버라이드. CHART_COLORS 팔레트는 매크로 쪽에서
@@ -1165,26 +1169,36 @@ function closeLedger() {
 var MANAGER_COLOR_OVERRIDE = { "송동열": "#29B6F6" };
 
 // ── 차트 렌더링 ──
+// 주의: chart-bar/chart-donut(#chart-all)와 chart-paytype-*(#chart-manager)는 담당자 필터에 따라
+// 서로 번갈아 display:none으로 숨겨지는데(applyFilters), 캔버스가 display:none인 상태에서
+// Chart.js 차트를 새로 만들면 컨테이너 크기를 0으로 측정해버려서 이후 다시 보여줘도 차트가
+// 찌그러진/작아진 크기로 굳어버리는 문제가 있었다(Chart.js의 흔한 "숨김 상태에서 생성" 버그).
+// 그래서 지금 실제로 보이는 쪽의 차트만 만들고, 숨겨진 쪽은 아예 건드리지 않는다.
 function renderCharts(managers, selectedManager) {
-  if (chartBar) chartBar.destroy();
-  chartBar = new Chart(document.getElementById("chart-bar").getContext("2d"), {
-    type: 'bar',
-    data: {
-      labels: managers.map(function(m) { return m.name; }),
-      datasets: [{ data: managers.map(function(m) { return m.amount; }), backgroundColor: managers.map(function(m, i) { return MANAGER_COLOR_OVERRIDE[m.name] || CHART_COLORS[i % CHART_COLORS.length]; }), borderRadius: 6, borderSkipped: false }]
-    },
-    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: function(ctx) { return ' ' + formatAmountFull(ctx.raw); } } } }, scales: { x: { grid: { display: false } }, y: { ticks: { callback: function(v) { return formatAmount(v); } } } } }
-  });
-  if (chartDonut) chartDonut.destroy();
-  chartDonut = new Chart(document.getElementById("chart-donut").getContext("2d"), {
-    type: 'doughnut',
-    data: {
-      labels: managers.map(function(m) { return m.name; }),
-      datasets: [{ data: managers.map(function(m) { return m.amount; }), backgroundColor: managers.map(function(m, i) { return MANAGER_COLOR_OVERRIDE[m.name] || CHART_COLORS[i % CHART_COLORS.length]; }), borderWidth: 2, borderColor: '#fff' }]
-    },
-    options: { responsive: true, maintainAspectRatio: false, cutout: '60%', plugins: { legend: { position: 'right' }, tooltip: { callbacks: { label: function(ctx) { return ' ' + ctx.label + ': ' + formatAmountFull(ctx.raw); } } } } }
-  });
-  if (selectedManager !== "전체" && DATA.paytypes[selectedManager]) {
+  var isAll = selectedManager === "전체";
+
+  if (isAll) {
+    if (chartBar) chartBar.destroy();
+    chartBar = new Chart(document.getElementById("chart-bar").getContext("2d"), {
+      type: 'bar',
+      data: {
+        labels: managers.map(function(m) { return m.name; }),
+        datasets: [{ data: managers.map(function(m) { return m.amount; }), backgroundColor: managers.map(function(m, i) { return MANAGER_COLOR_OVERRIDE[m.name] || CHART_COLORS[i % CHART_COLORS.length]; }), borderRadius: 6, borderSkipped: false }]
+      },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: function(ctx) { return ' ' + formatAmountFull(ctx.raw); } } } }, scales: { x: { grid: { display: false } }, y: { ticks: { callback: function(v) { return formatAmount(v); } } } } }
+    });
+    if (chartDonut) chartDonut.destroy();
+    chartDonut = new Chart(document.getElementById("chart-donut").getContext("2d"), {
+      type: 'doughnut',
+      data: {
+        labels: managers.map(function(m) { return m.name; }),
+        datasets: [{ data: managers.map(function(m) { return m.amount; }), backgroundColor: managers.map(function(m, i) { return MANAGER_COLOR_OVERRIDE[m.name] || CHART_COLORS[i % CHART_COLORS.length]; }), borderWidth: 2, borderColor: '#fff' }]
+      },
+      options: { responsive: true, maintainAspectRatio: false, cutout: '60%', plugins: { legend: { position: 'right' }, tooltip: { callbacks: { label: function(ctx) { return ' ' + ctx.label + ': ' + formatAmountFull(ctx.raw); } } } } }
+    });
+  }
+
+  if (!isAll && DATA.paytypes[selectedManager]) {
     var paytypeData = DATA.paytypes[selectedManager];
     document.getElementById("chart-manager-title").textContent = selectedManager + " 결제조건별 미수금 비중";
     if (chartPaytypeDonut) chartPaytypeDonut.destroy();
