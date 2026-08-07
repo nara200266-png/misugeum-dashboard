@@ -440,6 +440,11 @@ function renderTrendWidget() {
           '<button class="trend-modal-close" onclick="closeTrendModal()">✕</button></div>' +
         '<div class="trend-modal-body" id="trend-modal-body"></div>' +
       '</div>' +
+      '<div class="trend-modal trend-detail-modal" id="trend-detail-modal" onclick="event.stopPropagation()">' +
+        '<div class="trend-modal-header"><span id="trend-detail-title"></span>' +
+          '<button class="trend-modal-close" onclick="closeTrendDetail()">✕</button></div>' +
+        '<div class="trend-modal-body" id="trend-detail-body"></div>' +
+      '</div>' +
     '</div>';
 
   if (chartTrend) chartTrend.destroy();
@@ -509,12 +514,17 @@ var currentMisooTotal = 0;
 // ── "당월 수금 예정"/"지연 미수금" 뱃지 클릭 시 뜨는 모달에 표시할 거래처 목록.
 //    renderTrendWidget()이 매번 최신 필터 기준으로 채워두고, 모달은 그걸 그대로 읽기만 한다.
 var trendModalLists = { due: [], overdue: [] };
+// 지금 열려 있는 모달이 due/overdue 중 뭔지 - 거래처 클릭 시 상세 팝업에서 같은 목록을 다시 훑어야 해서 기억해둠
+var currentTrendModalType = null;
 
 function openTrendModal(type) {
   var backdrop = document.getElementById('trend-modal-backdrop');
   var body = document.getElementById('trend-modal-body');
   var titleEl = document.getElementById('trend-modal-title');
   if (!backdrop || !body || !titleEl) return;
+
+  currentTrendModalType = type;
+  closeTrendDetail();
 
   var list = trendModalLists[type] || [];
   var title = type === 'due' ? '당월 수금 예정 거래처' : '지연 미수금 거래처';
@@ -535,8 +545,10 @@ function openTrendModal(type) {
     body.innerHTML = '<div style="padding:30px;text-align:center;color:#6B7A94">해당 내역이 없습니다</div>';
   } else {
     var total = companies.reduce(function(s, c) { return s + c.amount; }, 0);
+    // 거래처를 클릭하면 바로 원장으로 넘어가지 않고, 옆에 그 거래처의 인보이스별 상세 내역
+    // 팝업을 하나 더 띄운다(openTrendDetail). 원장 이동은 그 상세 팝업 안에서 한다.
     var rows = companies.map(function(c) {
-      return '<tr><td class="ledger-link" style="cursor:pointer" onclick="closeTrendModal();showLedger(\'' + c.name.replace(/'/g, "\\'") + '\')">' + c.name + '</td>' +
+      return '<tr><td class="ledger-link" style="cursor:pointer" onclick="openTrendDetail(\'' + c.name.replace(/'/g, "\\'") + '\')">' + c.name + '</td>' +
         '<td>' + formatDate(c.oldestDate) + (c.count > 1 ? ' 외' : '') + '</td>' +
         '<td>' + c.count + '건</td>' +
         '<td style="text-align:right;font-weight:700">' + formatAmountFull(c.amount) + '</td></tr>';
@@ -551,6 +563,44 @@ function openTrendModal(type) {
 function closeTrendModal() {
   var backdrop = document.getElementById('trend-modal-backdrop');
   if (backdrop) backdrop.classList.remove('show');
+  closeTrendDetail();
+}
+
+// ── 지연/예정 목록 모달에서 거래처를 클릭하면 옆에 여는 인보이스별 상세 팝업 ──
+function openTrendDetail(companyName) {
+  var detailModal = document.getElementById('trend-detail-modal');
+  var detailBody = document.getElementById('trend-detail-body');
+  var detailTitle = document.getElementById('trend-detail-title');
+  if (!detailModal || !detailBody || !detailTitle) return;
+
+  var list = (trendModalLists[currentTrendModalType] || []).filter(function(r) { return r.company === companyName; })
+    .sort(function(a, b) { return a.saledate - b.saledate; });
+  var escaped = companyName.replace(/'/g, "\\'");
+
+  detailTitle.innerHTML = '<span class="ledger-link" style="cursor:pointer" onclick="closeTrendModal();showLedger(\'' + escaped + '\')" title="클릭하면 거래처 원장으로 이동합니다">' + companyName + '</span>';
+
+  var rows = list.map(function(r) {
+    var risk = calcRisk(r.saledate, r.paytype);
+    return '<tr class="ledger-row" style="cursor:pointer" onclick="closeTrendModal();showLedger(\'' + escaped + '\')" title="클릭하면 거래처 원장으로 이동합니다">' +
+      '<td>' + formatDate(r.saledate) + '</td>' +
+      '<td>' + r.paytype + '</td>' +
+      '<td style="text-align:right">' + formatAmountFull(r.misooamt) + '</td>' +
+      '<td><span class="risk-dot ' + risk.level + '"></span>D+' + risk.days + '일</td></tr>';
+  }).join('');
+  var total = list.reduce(function(s, r) { return s + r.misooamt; }, 0);
+
+  detailBody.innerHTML = list.length === 0
+    ? '<div style="padding:30px;text-align:center;color:#6B7A94">해당 내역이 없습니다</div>'
+    : '<table class="ledger-table"><thead><tr><th>매출일</th><th>결제조건</th><th style="text-align:right">미수금</th><th>경과일</th></tr></thead>' +
+      '<tbody>' + rows + '</tbody>' +
+      '<tfoot><tr class="ledger-foot"><td colspan="2">합계(' + list.length + '건)</td><td style="text-align:right">' + formatAmountFull(total) + '</td><td></td></tr></tfoot></table>';
+
+  detailModal.classList.add('show');
+}
+
+function closeTrendDetail() {
+  var detailModal = document.getElementById('trend-detail-modal');
+  if (detailModal) detailModal.classList.remove('show');
 }
 
 function formatDateInput(d) {

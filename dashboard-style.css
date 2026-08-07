@@ -646,18 +646,23 @@ body {
   z-index: 1000;
   align-items: center;
   justify-content: center;
+  gap: 14px;
+  flex-wrap: wrap;
 }
 .trend-modal-backdrop.show { display: flex; }
 .trend-modal {
   background: var(--흰색);
   border-radius: 12px;
-  width: 420px;
+  width: 480px;
   max-width: 92vw;
   max-height: 80vh;
   display: flex;
   flex-direction: column;
   box-shadow: 0 8px 28px rgba(0,0,0,.22);
 }
+/* 지연/예정 거래처 목록 옆에 여는 인보이스별 상세 팝업 - 기본 숨김, .show일 때만 나란히 노출 */
+.trend-detail-modal { display: none; width: 380px; }
+.trend-detail-modal.show { display: flex; }
 .trend-modal-header {
   display: flex;
   align-items: center;
