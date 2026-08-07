@@ -458,6 +458,14 @@ body {
 .ledger-row.deposit { background: rgba(15,123,82,.08); }
 .ledger-row.partial  { background: #FFFDE7; }
 .ledger-row.unpaid   { background: rgba(192,57,43,.04); }
+/* 날짜순 통합 뷰의 월별 소계 행 - 위아래 상세 내역과 섞이지 않도록 뚜렷하게 구분 */
+.ledger-row.subtotal {
+  background: #F8F9FA;
+  font-weight: 700;
+  border-top: 2px solid var(--테두리);
+  border-bottom: 2px solid var(--테두리);
+}
+.ledger-row.subtotal td:first-child { color: var(--네이비); }
 
 /* 뱃지 */
 .paid-label {

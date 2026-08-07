@@ -1032,9 +1032,36 @@ function renderLedgerCombined(records, deposits) {
   items.sort(function(a, b) { return a.date - b.date; });
 
   var rows = '';
+  // 날짜순 통합 뷰는 매출/입금이 뒤섞여 쭉 나열되기만 해서, 월이 바뀌는 경계마다 그 달의
+  // 매출·입금·미수 소계를 한 줄로 보여주는 요약 행을 끼워 넣는다(실무자가 월별 마감을
+  // 한눈에 확인하려는 목적). curYM(현재 누적 중인 월)이 바뀌는 순간 그 이전 달 소계를 먼저
+  // 찍고 누적값을 리셋하는 방식 - 마지막 달은 경계가 없어서 루프가 끝난 뒤 한 번 더 찍어준다.
+  var curYM = null, curYMLabel = '';
+  var mSale = 0, mPaid = 0, mMisoo = 0;
+  function flushMonthSubtotal() {
+    if (curYM === null) return;
+    rows += '<tr class="ledger-row subtotal">';
+    rows += '<td colspan="5">' + curYMLabel + ' 소계</td>';
+    rows += '<td style="text-align:right">' + formatAmountFull(mSale) + '</td>';
+    rows += '<td style="text-align:right">' + formatAmountFull(mPaid) + '</td>';
+    rows += '<td style="text-align:right">' + formatAmountFull(mMisoo) + '</td>';
+    rows += '</tr>';
+  }
+
   items.forEach(function(item) {
+    var ym = serialToYM(item.date);
+    var ymKey = ym.y + '-' + ym.m;
+    if (curYM !== null && ymKey !== curYM) {
+      flushMonthSubtotal();
+      mSale = 0; mPaid = 0; mMisoo = 0;
+    }
+    curYM = ymKey;
+    curYMLabel = ym.y + '년 ' + ym.m + '월';
+
     if (item.type === 'sale') {
       var r = item.r;
+      mSale += r.saleamt;
+      mMisoo += r.misooamt;
       var isPaid = r.misooamt <= 0;
       var rowCls = isPaid ? '' : 'ledger-row unpaid';
       var badge  = isPaid ? '<span class="ledger-badge paid">완납</span>' : '<span class="ledger-badge unpaid">미수</span>';
@@ -1050,6 +1077,7 @@ function renderLedgerCombined(records, deposits) {
       rows += '</tr>';
     } else {
       var d = item.d;
+      mPaid += d.amount;
       rows += '<tr class="ledger-row deposit">';
       rows += '<td>' + formatDate(d.date) + '</td>';
       rows += '<td>-</td>';
@@ -1062,6 +1090,7 @@ function renderLedgerCombined(records, deposits) {
       rows += '</tr>';
     }
   });
+  flushMonthSubtotal(); // 마지막 달은 다음 경계가 없어서 루프 종료 후 별도로 찍어줌
 
   var totalSale  = records.reduce(function(s,r){return s+r.saleamt;},0);
   var totalPaid  = deposits.reduce(function(s,d){return s+d.amount;},0);
