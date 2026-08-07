@@ -357,13 +357,26 @@ function renderTrendWidget() {
   // 미수 총액: 좌측 KPI 카드 "전체 미수금 합계"와 별도로 계산하지 않고, applyFilters()가
   // 세팅해둔 currentMisooTotal(=이월분 포함 전체 기간 누적 AF열 합계)을 그대로 바인딩한다.
   var misooToday = currentMisooTotal;
-  // 증감(▲/▼)은 "오늘 누적 미수 총액 - 30일 전 누적 미수 총액"이어야 하는데, misooamt는
-  // 시점별 스냅샷이 없는 현재값이라 30일 전 누적치를 직접 조회할 수는 없다. 대신
-  // "누적 미수금 = 누적 매출 - 누적 입금" 항등식을 이용해 역산한다:
-  //   30일 전 누적 미수금 = 오늘 누적 미수금 - (최근 30일 매출) + (최근 30일 입금)
-  // 이렇게 재구성한 값과 오늘 값의 차이는 결국 (최근 30일 매출 - 최근 30일 입금)과 같아서,
-  // 별도 이력 저장 없이도 "진짜 누적 잔액 기준" 증감액을 정확히 계산할 수 있다.
-  var misoo30dAgo = misooToday - (saleThis - depThis);
+  // 증감(▲/▼) = "오늘 누적 미수 총액 - 30일 전 누적 미수 총액". 처음엔 "매출-입금" 항등식으로
+  // 역산했는데(30일 전 미수 = 오늘 미수 - 최근30일 매출 + 최근30일 입금), 입금(DATA.deposits)이
+  // 거래처 단위로만 기록돼서 결제조건을 섞어 쓰는 거래처는 다른 결제조건 인보이스에 대한
+  // 입금까지 섞여 들어와 수치가 크게 왜곡되는 문제가 있었다(예: 담당자+결제조건 조합이 좁을 때
+  // 증감률이 -97% 등으로 튐). 그래서 입금 데이터에 전혀 의존하지 않고, 인보이스 단위로 이미
+  // 갖고 있는 saledate/misooamt/paiddate만으로 "30일 전 시점에 이 건이 미수 상태였는가"를
+  // 직접 재구성한다 — 결제조건이 몇 개로 갈리든 항상 정확하다(분할입금 이력은 원본 데이터에
+  // 없어서 인보이스가 한 번에 전액 결제된다고 가정).
+  function misooAsOf(cutoffSerial) {
+    return DATA.records.reduce(function(sum, r) {
+      if (filter.manager !== "전체" && r.manager !== filter.manager) return sum;
+      if (filter.paytype !== "전체" && r.paytype !== filter.paytype) return sum;
+      if (filter.risk !== "전체" && calcRisk(r.saledate, r.paytype).label !== filter.risk) return sum;
+      if (r.saledate > cutoffSerial) return sum;                                 // 그 시점엔 아직 없던 매출
+      if (r.misooamt > 0) return sum + r.misooamt;                               // 지금도 미수 → 그때도 미수
+      if (r.paiddate && r.paiddate > cutoffSerial) return sum + r.saleamt;        // 그 시점엔 아직 완납 전
+      return sum;                                                                  // 그 시점에 이미 완납
+    }, 0);
+  }
+  var misoo30dAgo = misooAsOf(thisM.from - 1);
 
   // 당월 수금 예정액 / 지연 미수금: 결제조건별로 실제 수금이 몰리는 달을 역산해서 판단
   // (7일이내 결제 = 매출월 안에 수금 예상 / 나머지는 전부 익월에 수금 예상)
@@ -413,6 +426,7 @@ function renderTrendWidget() {
         '<div class="trend-micro-item"><span class="trend-micro-label">지연 미수금</span><span class="trend-micro-value warn">' + formatAmount(overdue) + '</span></div>' +
       '</div>' +
       '<div class="trend-period">' + (filter.risk !== "전체" ? '위험도는 매출에만 적용됨 · ' : '') +
+        (filter.paytype !== "전체" ? '입금액은 거래처 단위 집계(결제조건 혼용 거래처는 추정치) · ' : '') +
         '최근 30일 ' + formatDate(thisM.from) + '~' + formatDate(thisM.to) +
         ' · 이전 30일 ' + formatDate(lastM.from) + '~' + formatDate(lastM.to) + '</div>' +
     '</div>';
