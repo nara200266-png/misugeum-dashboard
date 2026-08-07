@@ -301,8 +301,15 @@ function renderTrendWidget() {
   var el = document.getElementById('chart-placeholder');
   if (!el) return;
 
-  var companyInfo = {};
-  (DATA.companies || []).forEach(function(c) { companyInfo[c.name] = c; });
+  // 거래처 → 담당자 조회용 맵. DATA.companies는 "현재 미수금이 남아있는 거래처"만 담고 있어서
+  // (매크로 집계 로직상 미수금=0인 완납 거래처는 애초에 빠짐) 이걸로 입금을 매칭하면, 최근
+  // 30일 안에 매출도 있고 완납까지 된 거래처의 입금이 전부 담당자 불일치로 누락되는 문제가
+  // 있었다(카드 파일에 담당자 컬럼이 없어서가 아니라, 조회용 맵 자체가 그 거래처를 모르는 게
+  // 원인). 그래서 완납 건까지 전부 포함하는 DATA.records를 훑어서 거래처별 담당자를 구한다.
+  var companyManager = {};
+  DATA.records.forEach(function(r) {
+    if (!(r.company in companyManager)) companyManager[r.company] = r.manager;
+  });
 
   // 결제조건 필터가 걸려 있을 때, 입금을 어느 거래처 것까지 포함할지 판정하는 집합.
   // DATA.companies의 c.paytype 태그는 그 거래처가 "처음 집계된 인보이스" 하나의 결제조건일
@@ -335,8 +342,7 @@ function renderTrendWidget() {
 
   function sumDeposits(fromS, toS) {
     return (DATA.deposits || []).reduce(function(sum, d) {
-      var info = companyInfo[d.company];
-      if (filter.manager !== "전체" && (!info || info.manager !== filter.manager)) return sum;
+      if (filter.manager !== "전체" && companyManager[d.company] !== filter.manager) return sum;
       if (paytypeCompanySet && !paytypeCompanySet[d.company]) return sum;
       if (d.date < fromS || d.date > toS) return sum;
       return sum + d.amount;
