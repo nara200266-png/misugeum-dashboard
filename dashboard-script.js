@@ -378,14 +378,16 @@ function renderTrendWidget() {
   }
   var misoo30dAgo = misooAsOf(thisM.from - 1);
 
-  // 당월 수금 예정액 / 지연 미수금: 결제조건별 "정상 수금 기한"(매출일로부터 며칠 이내면
-  // 아직 정상 범위인지) 기준으로 판단. 회사 내부 기준표(매출일 기준 경과일수)를 그대로 반영:
-  //   7일이내 결제 → 20일 / 월말결제 → 30일 / 익월 10일결제 → 40일 / 익월말 → 50일
-  // 경과일이 그 기준보다 적으면 "당월 수금 예정"(아직 정상), 넘으면 "지연 미수금"으로 분류.
-  // (참고: 90일 이상은 별도 "악성" 등급이라고 명시돼 있는데, 90일은 위 네 기준을 전부 넘는
-  // 값이라 이미 지연으로 분류된 뒤라서 이 두 버킷 계산 자체엔 영향이 없음)
+  // 당월 수금 예정액 / 지연 미수금: 결제조건별 "정상 수금 기한"(매출일 + 며칠)을 계산해서,
+  // 그 만기일이 정확히 "이번 달" 안에 들어오는 건만 당월 수금 예정으로 잡는다(만기일이 아직
+  // 지나지 않았다는 것만으로는 부족함 - 예를 들어 익월말 결제는 만기가 50일 뒤라 이번 달을
+  // 넘어 다음 달에야 만기가 되는 경우가 흔한데, 그런 건 "당월"이 아니라 "아직 안 온 미래분"
+  // 이므로 당월 수금 예정에도 지연 미수금에도 넣지 않는다). 만기일이 이미 지난 건은 지연
+  // 미수금으로, 만기일이 다음 달 이후인 건은 두 버킷 어디에도 넣지 않아 서로 안 겹치게 한다.
+  //   7일이내 결제 → 매출일+20일 / 월말결제 → +30일 / 익월 10일결제 → +40일 / 익월말 → +50일
   var COLLECTION_DUE_DAYS = { "7일이내 결제": 20, "월말결제": 30, "익월 10일결제": 40, "익월말": 50 };
   var todaySerial = dateToSerial(DATA.today);
+  var todayYM = serialToYM(todaySerial);
   var dueThisMonth = 0, overdue = 0;
   trendModalLists.due = [];
   trendModalLists.overdue = [];
@@ -394,10 +396,14 @@ function renderTrendWidget() {
     if (filter.manager !== "전체" && r.manager !== filter.manager) return;
     if (filter.paytype !== "전체" && r.paytype !== filter.paytype) return;
     if (filter.risk !== "전체" && calcRisk(r.saledate, r.paytype).label !== filter.risk) return;
-    var elapsed = todaySerial - r.saledate;
     var dueDays = COLLECTION_DUE_DAYS[r.paytype] || 30;
-    if (elapsed < dueDays) { dueThisMonth += r.misooamt; trendModalLists.due.push(r); }
-    else { overdue += r.misooamt; trendModalLists.overdue.push(r); }
+    var dueSerial = r.saledate + dueDays;
+    if (dueSerial < todaySerial) { overdue += r.misooamt; trendModalLists.overdue.push(r); }
+    else {
+      var dueYM = serialToYM(dueSerial);
+      if (dueYM.y === todayYM.y && dueYM.m === todayYM.m) { dueThisMonth += r.misooamt; trendModalLists.due.push(r); }
+      // 만기가 다음 달 이후면 아직 당월도 지연도 아님 - 두 버킷 모두 제외
+    }
   });
 
   // 최근 6개월(달력 기준) 매출·입금 추이 - 그래프용
