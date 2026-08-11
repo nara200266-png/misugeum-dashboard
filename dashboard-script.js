@@ -237,7 +237,11 @@ function applyFilters() {
   var filteredRecords = DATA.records.filter(function(r) {
     if (filter.manager !== "전체" && r.manager !== filter.manager) return false;
     if (filter.paytype !== "전체" && r.paytype !== filter.paytype) return false;
-    if (r.misooamt <= 0) return false;
+    // misooamt === 0(완납, 남은 잔액 없음)인 건만 제외. 마이너스(반품/과입금 상계 등 조정)는
+    // 반드시 포함해서 그대로 더해야 실제 미수 잔액이 정확히 상계되어 나온다 - 예전엔 <= 0으로
+    // 걸러서 마이너스 조정 건이 합계에서 통째로 빠지는 바람에 미수금이 항상 실제보다 부풀려
+    // 표시되는 버그가 있었다.
+    if (r.misooamt === 0) return false;
     if (filter.risk !== "전체" && calcRisk(r.saledate, r.paytype).label !== filter.risk) return false;
     return true;
   });
@@ -371,7 +375,7 @@ function renderTrendWidget() {
       if (filter.paytype !== "전체" && r.paytype !== filter.paytype) return sum;
       if (filter.risk !== "전체" && calcRisk(r.saledate, r.paytype).label !== filter.risk) return sum;
       if (r.saledate > cutoffSerial) return sum;                                 // 그 시점엔 아직 없던 매출
-      if (r.misooamt > 0) return sum + r.misooamt;                               // 지금도 미수 → 그때도 미수
+      if (r.misooamt !== 0) return sum + r.misooamt;                             // 지금도 미수(마이너스 조정 포함) → 그때도 그대로였다고 봄
       if (r.paiddate && r.paiddate > cutoffSerial) return sum + r.saleamt;        // 그 시점엔 아직 완납 전
       return sum;                                                                  // 그 시점에 이미 완납
     }, 0);
@@ -751,7 +755,9 @@ function renderTable() {
   setKpiText("table-title", filter.manager === "전체" ? "전체 미수내역" : filter.manager + " 담당 미수내역");
 
   var records = DATA.records.filter(function(r) {
-    if (r.misooamt <= 0) return false;
+    // 완납(잔액 0)인 건만 제외. 마이너스(반품/과입금 상계 등 조정) 건은 포함시켜서 거래처
+    // 합계에 그대로 상계 반영되도록 한다(자세한 이유는 applyFilters의 동일 필터 주석 참고).
+    if (r.misooamt === 0) return false;
     if (filter.manager !== "전체" && r.manager !== filter.manager) return false;
     if (filter.paytype !== "전체" && r.paytype !== filter.paytype) return false;
     if (filter.risk !== "전체" && calcRisk(r.saledate, r.paytype).label !== filter.risk) return false;
@@ -971,17 +977,30 @@ function renderLedger() {
 // records: 매출(인보이스) 목록 - 행 단위로 그대로 표시
 // deposits: 입금 목록 - 실제 입금 건수만큼 행으로 표시 (매출 건수와 무관)
 function renderLedgerSplit(records, deposits) {
-  // 매출 행 (미수금 유무로만 완납/미수 판정 - AF열 기준, 왼쪽 패널과 동일)
+  // 매출 행 (미수금(AF열) 부호로 완납/미수/조정 판정 - 왼쪽 패널과 동일한 값을 그대로 씀)
+  // AF열이 마이너스인 행은 반품/과입금 상계 같은 조정 건이라 "완납"이 아니라 실제 마이너스
+  // 금액을 그대로 보여줘야 한다(전에는 <=0이면 전부 "완납"으로 표시해서 조정 내역이 안 보였음).
   var saleRows = '';
   records.forEach(function(r) {
-    var isPaid = r.misooamt <= 0;
-    var rowCls = isPaid ? '' : 'ledger-row unpaid';
-    var badge  = isPaid ? '<span class="ledger-badge paid">완납</span>' : '<span class="ledger-badge unpaid">미수</span>';
+    var badge, rowCls, amtHtml;
+    if (r.misooamt > 0) {
+      badge = '<span class="ledger-badge unpaid">미수</span>';
+      rowCls = 'ledger-row unpaid';
+      amtHtml = '<span style="color:#C0392B">' + formatAmountFull(r.misooamt) + '</span>';
+    } else if (r.misooamt < 0) {
+      badge = '<span class="ledger-badge paid">조정</span>';
+      rowCls = '';
+      amtHtml = '<span style="color:#0F7B52">' + formatAmountFull(r.misooamt) + '</span>';
+    } else {
+      badge = '<span class="ledger-badge paid">완납</span>';
+      rowCls = '';
+      amtHtml = '<span style="color:#0F7B52">완납</span>';
+    }
     saleRows += '<tr class="' + rowCls + '">';
     saleRows += '<td>' + formatDate(r.saledate) + '</td>';
     saleRows += '<td>' + (r.origin || '-') + ' / ' + (r.product || '-') + ' ' + badge + '</td>';
     saleRows += '<td style="text-align:right">' + formatAmountFull(r.saleamt) + '</td>';
-    saleRows += '<td style="text-align:right;color:#C0392B;font-weight:500">' + (r.misooamt > 0 ? formatAmountFull(r.misooamt) : '<span style="color:#0F7B52">완납</span>') + '</td>';
+    saleRows += '<td style="text-align:right;font-weight:500">' + amtHtml + '</td>';
     saleRows += '</tr>';
   });
 
@@ -1067,9 +1086,20 @@ function renderLedgerCombined(records, deposits) {
       var r = item.r;
       mSale += r.saleamt;
       mMisoo += r.misooamt;
-      var isPaid = r.misooamt <= 0;
-      var rowCls = isPaid ? '' : 'ledger-row unpaid';
-      var badge  = isPaid ? '<span class="ledger-badge paid">완납</span>' : '<span class="ledger-badge unpaid">미수</span>';
+      // AF열(미수금) 부호로 완납/미수/조정 판정 - 마이너스는 반품·과입금 상계 같은 조정 건이라
+      // "완납"이 아니라 실제 마이너스 금액을 그대로 보여준다.
+      var badge, misooColor, misooText;
+      if (r.misooamt > 0) {
+        badge = '<span class="ledger-badge unpaid">미수</span>';
+        misooColor = '#C0392B'; misooText = formatAmountFull(r.misooamt);
+      } else if (r.misooamt < 0) {
+        badge = '<span class="ledger-badge paid">조정</span>';
+        misooColor = '#0F7B52'; misooText = formatAmountFull(r.misooamt);
+      } else {
+        badge = '<span class="ledger-badge paid">완납</span>';
+        misooColor = '#0F7B52'; misooText = '완납';
+      }
+      var rowCls = r.misooamt > 0 ? 'ledger-row unpaid' : '';
       rows += '<tr class="' + rowCls + '">';
       rows += '<td>' + formatDate(r.saledate) + '</td>';
       rows += '<td>' + (r.origin || '-') + '</td>';
@@ -1078,7 +1108,7 @@ function renderLedgerCombined(records, deposits) {
       rows += '<td style="text-align:center">' + (r.qty || 0).toLocaleString('ko-KR') + '</td>';
       rows += '<td style="text-align:right">' + formatAmountFull(r.saleamt) + '</td>';
       rows += '<td style="text-align:right">-</td>';
-      rows += '<td style="text-align:right;color:' + (r.misooamt > 0 ? '#C0392B' : '#0F7B52') + ';font-weight:500">' + (r.misooamt > 0 ? formatAmountFull(r.misooamt) : '완납') + '</td>';
+      rows += '<td style="text-align:right;color:' + misooColor + ';font-weight:500">' + misooText + '</td>';
       rows += '</tr>';
     } else {
       var d = item.d;
