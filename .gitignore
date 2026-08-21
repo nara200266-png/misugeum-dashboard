@@ -3,5 +3,7 @@
 #  심볼릭 링크 폴더가 실수로 포함되지 않도록 전부 제외한 뒤 필요한 파일만 허용)
 *
 !.gitignore
-!dashboard-style.css
-!dashboard-script.js
+!css/
+!css/dashboard-style.css
+!js/
+!js/dashboard-script.js
