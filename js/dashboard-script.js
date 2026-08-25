@@ -17,6 +17,7 @@
   - renderDepositTable(q)    : 최근 입금내역 표 렌더 (기본 최근 7일, 최신순)
   - toggleAll()              : 전체 펼치기/접기
   - renderCharts()           : 차트 렌더
+  - renderManagerRankList()  : 담당자별 미수금 순위 리스트 렌더 (액수 큰 순)
   - showLedger(companyName)  : 거래처 클릭 시 오른쪽 원장 표시
   - closeLedger()            : 원장 닫기
   - formatAmount(n)          : 숫자 포맷 (억/만원)
@@ -410,42 +411,24 @@ function renderTrendWidget() {
     }
   });
 
-  // 최근 6개월(달력 기준) 매출·입금 추이 - 그래프용
-  var p2 = DATA.today.split('-');
-  var y2 = parseInt(p2[0]), m2 = parseInt(p2[1]);
-  var monthRanges = [];
-  for (var i = 5; i >= 0; i--) {
-    var idx = y2 * 12 + (m2 - 1) - i;
-    var yy = Math.floor(idx / 12), mm = (idx % 12) + 1;
-    var mStart = new Date(yy, mm - 1, 1);
-    var mEnd   = new Date(yy, mm, 0);
-    monthRanges.push({
-      label: mm + '월',
-      from: dateToSerial(formatDateInput(mStart)),
-      to: dateToSerial(formatDateInput(mEnd))
-    });
-  }
-  var salesSeries   = monthRanges.map(function(r) { return sumSales(r.from, r.to); });
-  var depositSeries = monthRanges.map(function(r) { return sumDeposits(r.from, r.to); });
-
   el.innerHTML =
     '<div class="trend-widget">' +
-      '<div class="trend-widget-title">최근 6개월 매출·입금 추이</div>' +
-      '<div class="trend-widget-sub">현재 필터 기준</div>' +
-      '<div class="chart-wrap" style="height:150px"><canvas id="chart-trend" width="800" height="150"></canvas></div>' +
-      trendRow('매출 총액', saleThis, saleLast) +
-      trendRow('입금 총액', depThis, depLast) +
-      trendRow('미수 총액', misooToday, misoo30dAgo, true) +
       '<div class="trend-micro">' +
         '<div class="trend-micro-item"><span class="trend-micro-label">당월 수금 예정</span>' +
           '<span class="trend-badge due" onclick="openTrendModal(\'due\')">' + formatAmount(dueThisMonth) + '</span></div>' +
         '<div class="trend-micro-item"><span class="trend-micro-label">지연 미수금</span>' +
           '<span class="trend-badge overdue" onclick="openTrendModal(\'overdue\')">' + formatAmount(overdue) + '</span></div>' +
       '</div>' +
-      '<div class="trend-period">' + (filter.risk !== "전체" ? '위험도는 매출에만 적용됨 · ' : '') +
-        (filter.paytype !== "전체" ? '입금액은 거래처 단위 집계(결제조건 혼용 거래처는 추정치) · ' : '') +
-        '최근 30일 ' + formatDate(thisM.from) + '~' + formatDate(thisM.to) +
-        ' · 이전 30일 ' + formatDate(lastM.from) + '~' + formatDate(lastM.to) + '</div>' +
+      '<details class="trend-details">' +
+        '<summary>매출 · 입금 · 미수 총액 보기</summary>' +
+        trendRow('매출 총액', saleThis, saleLast) +
+        trendRow('입금 총액', depThis, depLast) +
+        trendRow('미수 총액', misooToday, misoo30dAgo, true) +
+        '<div class="trend-period">' + (filter.risk !== "전체" ? '위험도는 매출에만 적용됨 · ' : '') +
+          (filter.paytype !== "전체" ? '입금액은 거래처 단위 집계(결제조건 혼용 거래처는 추정치) · ' : '') +
+          '최근 30일 ' + formatDate(thisM.from) + '~' + formatDate(thisM.to) +
+          ' · 이전 30일 ' + formatDate(lastM.from) + '~' + formatDate(lastM.to) + '</div>' +
+      '</details>' +
     '</div>' +
     '<div class="trend-modal-backdrop" id="trend-modal-backdrop">' +
       '<div class="trend-modal" onclick="event.stopPropagation()">' +
@@ -460,31 +443,6 @@ function renderTrendWidget() {
       '</div>' +
     '</div>';
 
-  if (chartTrend) chartTrend.destroy();
-  var trendCanvas = document.getElementById('chart-trend');
-  if (trendCanvas) {
-    chartTrend = new Chart(trendCanvas.getContext('2d'), {
-      type: 'line',
-      data: {
-        labels: monthRanges.map(function(r) { return r.label; }),
-        datasets: [
-          { label: '매출액', data: salesSeries, borderColor: '#2554A0', backgroundColor: 'rgba(37,84,160,.18)', fill: true, tension: 0.35, pointRadius: 2, borderWidth: 2 },
-          { label: '입금액', data: depositSeries, borderColor: '#0F7B52', backgroundColor: 'rgba(15,123,82,.18)', fill: true, tension: 0.35, pointRadius: 2, borderWidth: 2 }
-        ]
-      },
-      options: {
-        responsive: false,
-        plugins: {
-          legend: { display: true, position: 'top', align: 'end', labels: { boxWidth: 10, font: { size: 10 } } },
-          tooltip: { callbacks: { label: function(ctx) { return ' ' + ctx.dataset.label + ': ' + formatAmountFull(ctx.raw); } } }
-        },
-        scales: {
-          x: { grid: { display: false }, ticks: { font: { size: 10 } } },
-          y: { ticks: { font: { size: 10 }, callback: function(v) { return formatAmount(v); } } }
-        }
-      }
-    });
-  }
 }
 
 // ── 엑셀 시리얼 날짜 → {연,월} 변환 헬퍼 (날짜순 통합 원장의 월별 소계 등에 사용) ──
@@ -510,9 +468,6 @@ function trendRow(label, cur, prev, highlight) {
 
 // ── 담당자/결제조건/위험도가 전부 "전체"일 때 표시할 "최근 입금내역" 상태 ──
 var depositView = { dateFrom: '', dateTo: '' };
-
-// ── 원장 대기화면의 매출·입금 추이 차트 인스턴스 (재렌더 시 destroy 후 재생성) ──
-var chartTrend = null;
 
 // ── 좌측 KPI 카드 "전체 미수금 합계"와 우측 트렌드 위젯 "미수 총액"이 100% 동일한 값을
 //    쓰도록 단일 소스로 관리하는 변수. applyFilters()에서만 값을 세팅하고,
@@ -697,13 +652,8 @@ function buildTopBadDebtHtml() {
     if (r.misooamt <= 0) return;
     var risk = calcRisk(r.saledate, r.paytype);
     if (risk.level !== "danger" && risk.level !== "critical") return;
-    if (!byCompany[r.company]) byCompany[r.company] = { name: r.company, amount: 0, maxDays: 0, worstLabel: risk.label, worstLevel: risk.level };
+    if (!byCompany[r.company]) byCompany[r.company] = { name: r.company, amount: 0, manager: r.manager };
     byCompany[r.company].amount += r.misooamt;
-    if (risk.days > byCompany[r.company].maxDays) {
-      byCompany[r.company].maxDays = risk.days;
-      byCompany[r.company].worstLabel = risk.label;
-      byCompany[r.company].worstLevel = risk.level;
-    }
   });
   var top5 = Object.keys(byCompany).map(function(k) { return byCompany[k]; })
     .sort(function(a, b) { return b.amount - a.amount; })
@@ -714,12 +664,12 @@ function buildTopBadDebtHtml() {
   if (top5.length === 0) {
     html += '<div class="baddebt-empty">위험/심각 등급 미수금이 없습니다</div>';
   } else {
-    html += '<table class="baddebt-table"><thead><tr><th>거래처</th><th>위험도</th><th style="text-align:right">미수금</th></tr></thead><tbody>';
+    html += '<table class="baddebt-table"><thead><tr><th>거래처</th><th style="text-align:right">미수금</th><th style="text-align:right">담당자</th></tr></thead><tbody>';
     top5.forEach(function(c) {
       html += '<tr>';
       html += '<td class="ledger-link" style="cursor:pointer" onclick="showLedger(\'' + c.name.replace(/'/g, "\\'") + '\')">' + c.name + '</td>';
-      html += '<td><span class="risk-dot ' + c.worstLevel + '"></span>' + c.worstLabel + '</td>';
       html += '<td style="text-align:right;font-weight:700;color:var(--빨강)">' + formatAmountFull(c.amount) + '</td>';
+      html += '<td style="text-align:right;color:var(--회색글자)">' + (c.manager || '-') + '</td>';
       html += '</tr>';
     });
     html += '</tbody></table>';
@@ -1245,6 +1195,24 @@ function freshCanvas(id, w, h) {
   return document.getElementById(id);
 }
 
+// ── 담당자별 미수금 순위 리스트 (도넛 차트 대신, 액수 큰 순서로 담당자명+미수총액을 나열) ──
+function renderManagerRankList(managers) {
+  var el = document.getElementById("manager-rank-list");
+  if (!el) return;
+  var withColor = managers.map(function(m, i) {
+    return { name: m.name, amount: m.amount, color: MANAGER_COLOR_OVERRIDE[m.name] || CHART_COLORS[i % CHART_COLORS.length] };
+  });
+  withColor.sort(function(a, b) { return b.amount - a.amount; });
+  el.innerHTML = withColor.map(function(m, i) {
+    return '<div class="manager-rank-row">' +
+      '<span class="manager-rank-rank">' + (i + 1) + '</span>' +
+      '<span class="manager-rank-dot" style="background:' + m.color + '"></span>' +
+      '<span class="manager-rank-name">' + m.name + '</span>' +
+      '<span class="manager-rank-amount">' + formatAmountFull(m.amount) + '</span>' +
+    '</div>';
+  }).join('');
+}
+
 // ── 차트 렌더링 ──
 function renderCharts(managers, selectedManager) {
   var isAll = selectedManager === "전체";
@@ -1259,15 +1227,7 @@ function renderCharts(managers, selectedManager) {
       },
       options: { responsive: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: function(ctx) { return ' ' + formatAmountFull(ctx.raw); } } } }, scales: { x: { grid: { display: false } }, y: { ticks: { callback: function(v) { return formatAmount(v); } } } } }
     });
-    if (chartDonut) chartDonut.destroy();
-    chartDonut = new Chart(freshCanvas("chart-donut", 400, 150).getContext("2d"), {
-      type: 'doughnut',
-      data: {
-        labels: managers.map(function(m) { return m.name; }),
-        datasets: [{ data: managers.map(function(m) { return m.amount; }), backgroundColor: managers.map(function(m, i) { return MANAGER_COLOR_OVERRIDE[m.name] || CHART_COLORS[i % CHART_COLORS.length]; }), borderWidth: 2, borderColor: '#fff' }]
-      },
-      options: { responsive: false, cutout: '60%', plugins: { legend: { position: 'right' }, tooltip: { callbacks: { label: function(ctx) { return ' ' + ctx.label + ': ' + formatAmountFull(ctx.raw); } } } } }
-    });
+    renderManagerRankList(managers);
   }
 
   if (!isAll && DATA.paytypes[selectedManager]) {

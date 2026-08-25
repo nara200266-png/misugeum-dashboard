@@ -184,6 +184,27 @@ body {
   height: 100% !important;
   display: block;
 }
+/* 담당자별 미수금 순위 리스트 (도넛 차트 대신, 액수 큰 순서로 담당자명+미수총액을 나열) */
+.manager-rank-list {
+  height: 150px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+.manager-rank-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 0;
+  border-top: 1px solid var(--테두리);
+  font-size: 12px;
+}
+.manager-rank-row:first-child { border-top: none; }
+.manager-rank-rank { flex-shrink: 0; width: 14px; font-size: 10px; font-weight: 700; color: var(--회색글자); }
+.manager-rank-dot { flex-shrink: 0; width: 8px; height: 8px; border-radius: 50%; }
+.manager-rank-name { flex: 1; min-width: 0; font-weight: 600; color: var(--글자색); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.manager-rank-amount { flex-shrink: 0; font-weight: 700; color: var(--글자색); }
+
 #fund-issue-body {
   /* 내부 스크롤 없이 전부 표시 - 페이지 전체 스크롤을 따라감 */
 }
@@ -639,6 +660,22 @@ body {
 .trend-micro-value.warn { color: var(--빨강); }
 
 .trend-period { font-size: 10px; color: var(--회색글자); margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--테두리); }
+
+/* 매출/입금/미수 총액 상세 - 시선이 분산되지 않도록 기본 접힘, 클릭 시에만 펼침 */
+.trend-details { margin-top: 8px; border-top: 1px solid var(--테두리); padding-top: 4px; }
+.trend-details summary {
+  cursor: pointer;
+  list-style: none;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--회색글자);
+  padding: 6px 0;
+  user-select: none;
+}
+.trend-details summary::-webkit-details-marker { display: none; }
+.trend-details summary::before { content: "▸ "; }
+.trend-details[open] summary::before { content: "▾ "; }
+.trend-details[open] summary { margin-bottom: 4px; }
 
 /* 당월 수금 예정 / 지연 미수금 - 클릭해서 상세 거래처 모달을 여는 뱃지 */
 .trend-badge {
