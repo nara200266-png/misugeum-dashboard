@@ -44,17 +44,6 @@ function setKpiText(id, text) {
   if (el) el.textContent = text;
 }
 
-// ── 자금 특이사항 카드를 왼쪽 "OO 담당 미수내역" 헤더와 같은 높이에서 시작하도록 보정 ──
-// (왼쪽은 필터바+KPI카드, 오른쪽은 차트로 구성이 달라서 자연 높이가 다르므로 실측 후 맞춤)
-function alignFundIssueCard() {
-  var target = document.querySelector('.table-container');
-  var card = document.getElementById('fund-issue-card');
-  if (!target || !card) return;
-  card.style.marginTop = '0px';
-  var diff = target.getBoundingClientRect().top - card.getBoundingClientRect().top;
-  card.style.marginTop = (diff > 0 ? diff : 0) + 'px';
-}
-
 // ── 숫자 포맷 함수 ──
 function formatAmount(n) {
   if (!n || n === 0) return "0원";
@@ -284,7 +273,6 @@ function applyFilters() {
   renderCharts(chartManagers, filter.manager);
   updateStatus();
   renderTable();
-  alignFundIssueCard();
   renderTrendWidget();
 }
 
@@ -1167,7 +1155,6 @@ function closeLedger() {
   if (ca) ca.style.display = isAll ? "" : "none";
   var cm = document.getElementById("chart-manager");
   if (cm) cm.style.display = isAll ? "none" : "";
-  alignFundIssueCard();
   // 원장이 열려있던 동안 숨겨졌던 매출·입금 추이 차트를 다시 정상적으로 그린다.
   renderTrendWidget();
 }
@@ -1249,4 +1236,3 @@ function renderCharts(managers, selectedManager) {
 }
 
 window.addEventListener('DOMContentLoaded', init);
-window.addEventListener('resize', alignFundIssueCard);
