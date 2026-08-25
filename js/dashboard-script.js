@@ -18,6 +18,7 @@
   - toggleAll()              : 전체 펼치기/접기
   - renderCharts()           : 차트 렌더
   - renderManagerRankList()  : 담당자별 미수금 순위 리스트 렌더 (액수 큰 순)
+  - selectRankPaytype(idx)   : 순위 리스트 전용 결제조건 미니 필터 선택
   - showLedger(companyName)  : 거래처 클릭 시 오른쪽 원장 표시
   - closeLedger()            : 원장 닫기
   - formatAmount(n)          : 숫자 포맷 (억/만원)
@@ -94,22 +95,22 @@ function renderFundIssues() {
     el.innerHTML = '<div class="fund-issue-empty">특이사항 없음</div>';
     return;
   }
-  var html = '<div class="fund-issue-header">';
-  html += '<span class="fund-issue-date">입금일</span>';
-  html += '<span class="fund-issue-type">구분</span>';
-  html += '<span class="fund-issue-company">거래처</span>';
-  html += '<span class="fund-issue-amount">금액</span>';
-  html += '</div>';
+  // 거래처 바로 옆에 금액이 오고, 비고는 같은 행의 마지막 칸에 오도록 표로 구성한다
+  // (예전엔 금액이 맨 오른쪽에, 비고는 그 아래 별도 줄에 있어 시선이 분산됐음).
+  var html = '<table class="fund-issue-table"><thead><tr>';
+  html += '<th>입금일</th><th>구분</th><th>거래처</th><th style="text-align:right">금액</th><th>비고</th>';
+  html += '</tr></thead><tbody>';
   items.forEach(function(it) {
-    var rowCls = it.type === '과입금' ? 'fund-issue-row overpay' : 'fund-issue-row';
-    html += '<div class="' + rowCls + '">';
-    html += '<span class="fund-issue-date">' + (it.date > 0 ? formatDate(it.date) : '-') + '</span>';
-    html += '<span class="fund-issue-type">' + (it.type || '-') + '</span>';
-    html += '<span class="fund-issue-company">' + (it.company || '-') + '</span>';
-    html += '<span class="fund-issue-amount">' + formatAmountFull(it.amount) + '</span>';
-    html += '</div>';
-    if (it.note) html += '<div class="fund-issue-note">' + it.note + '</div>';
+    var rowCls = it.type === '과입금' ? 'overpay' : '';
+    html += '<tr class="' + rowCls + '">';
+    html += '<td>' + (it.date > 0 ? formatDate(it.date) : '-') + '</td>';
+    html += '<td><span class="fund-issue-type-tag">' + (it.type || '-') + '</span></td>';
+    html += '<td>' + (it.company || '-') + '</td>';
+    html += '<td>' + formatAmountFull(it.amount) + '</td>';
+    html += '<td>' + (it.note || '-') + '</td>';
+    html += '</tr>';
   });
+  html += '</tbody></table>';
   el.innerHTML = html;
 }
 
@@ -1182,15 +1183,36 @@ function freshCanvas(id, w, h) {
   return document.getElementById(id);
 }
 
+// ── 담당자별 미수금 순위 리스트 전용 결제조건 미니 필터 상태 (좌측 전역 필터와는 별개) ──
+var rankPaytype = "전체";
+var lastRankManagers = null;
+
 // ── 담당자별 미수금 순위 리스트 (도넛 차트 대신, 액수 큰 순서로 담당자명+미수총액을 나열) ──
 function renderManagerRankList(managers) {
   var el = document.getElementById("manager-rank-list");
   if (!el) return;
+  lastRankManagers = managers;
+
+  // 상단 미니 필터에서 고른 결제조건 기준으로 담당자별 미수금을 다시 집계한다
+  // (좌측 KPI 합계와 같은 규칙: misooamt===0인 완납 건만 제외, 마이너스 조정 건은 포함해 상계 반영).
+  var amountByManager = {};
+  DATA.records.forEach(function(r) {
+    if (r.misooamt === 0) return;
+    if (rankPaytype !== "전체" && r.paytype !== rankPaytype) return;
+    amountByManager[r.manager] = (amountByManager[r.manager] || 0) + r.misooamt;
+  });
+
   var withColor = managers.map(function(m, i) {
-    return { name: m.name, amount: m.amount, color: MANAGER_COLOR_OVERRIDE[m.name] || CHART_COLORS[i % CHART_COLORS.length] };
+    return { name: m.name, amount: amountByManager[m.name] || 0, color: MANAGER_COLOR_OVERRIDE[m.name] || CHART_COLORS[i % CHART_COLORS.length] };
   });
   withColor.sort(function(a, b) { return b.amount - a.amount; });
-  el.innerHTML = withColor.map(function(m, i) {
+
+  var paytypes = ["전체", "7일이내 결제", "월말결제", "익월 10일결제", "익월말"];
+  var filterHtml = '<div class="rank-filter-bar">' + paytypes.map(function(p, i) {
+    return '<button class="rank-filter-btn' + (p === rankPaytype ? ' selected' : '') + '" onclick="selectRankPaytype(' + i + ')">' + p + '</button>';
+  }).join('') + '</div>';
+
+  var rowsHtml = withColor.map(function(m, i) {
     return '<div class="manager-rank-row">' +
       '<span class="manager-rank-rank">' + (i + 1) + '</span>' +
       '<span class="manager-rank-dot" style="background:' + m.color + '"></span>' +
@@ -1198,6 +1220,15 @@ function renderManagerRankList(managers) {
       '<span class="manager-rank-amount">' + formatAmountFull(m.amount) + '</span>' +
     '</div>';
   }).join('');
+
+  el.innerHTML = filterHtml + rowsHtml;
+}
+
+// ── 순위 리스트 결제조건 미니 필터 클릭 ──
+function selectRankPaytype(idx) {
+  var paytypes = ["전체", "7일이내 결제", "월말결제", "익월 10일결제", "익월말"];
+  rankPaytype = paytypes[idx];
+  if (lastRankManagers) renderManagerRankList(lastRankManagers);
 }
 
 // ── 차트 렌더링 ──
