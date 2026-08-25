@@ -19,6 +19,7 @@
   - renderCharts()           : 차트 렌더
   - renderManagerRankList()  : 담당자별 미수금 순위 리스트 렌더 (액수 큰 순)
   - selectRankPaytype(idx)   : 순위 리스트 전용 결제조건 미니 필터 선택
+  - openManagerRankModal(name) : 순위 리스트에서 담당자 클릭 시 거래처별 미수금 모달 표시
   - showLedger(companyName)  : 거래처 클릭 시 오른쪽 원장 표시
   - closeLedger()            : 원장 닫기
   - formatAmount(n)          : 숫자 포맷 (억/만원)
@@ -469,24 +470,18 @@ var trendModalLists = { due: [], overdue: [] };
 // 지금 열려 있는 모달이 due/overdue 중 뭔지 - 거래처 클릭 시 상세 팝업에서 같은 목록을 다시 훑어야 해서 기억해둠
 var currentTrendModalType = null;
 
-function openTrendModal(type) {
-  var backdrop = document.getElementById('trend-modal-backdrop');
+// ── 거래처별 미수금 목록 모달 공통 렌더러 (당월수금예정/지연미수금/담당자별 순위 클릭에서 공용) ──
+function renderCompanyListModal(title, list) {
   var body = document.getElementById('trend-modal-body');
   var titleEl = document.getElementById('trend-modal-title');
-  if (!backdrop || !body || !titleEl) return;
-
-  currentTrendModalType = type;
-  closeTrendDetail();
-
-  var list = trendModalLists[type] || [];
-  var title = type === 'due' ? '당월 수금 예정 거래처' : '지연 미수금 거래처';
+  if (!body || !titleEl) return;
 
   var byCompany = {};
   list.forEach(function(r) {
     if (!byCompany[r.company]) byCompany[r.company] = { name: r.company, amount: 0, count: 0, oldestDate: r.saledate };
     byCompany[r.company].amount += r.misooamt;
     byCompany[r.company].count += 1;
-    // 지연/예정 판단은 결국 매출일 기준이라, 여러 건 중 가장 오래된(가장 급한) 매출일을 대표로 보여준다
+    // 여러 건 중 가장 오래된(가장 급한) 매출일을 대표로 보여준다
     if (r.saledate < byCompany[r.company].oldestDate) byCompany[r.company].oldestDate = r.saledate;
   });
   var companies = Object.keys(byCompany).map(function(k) { return byCompany[k]; })
@@ -495,20 +490,55 @@ function openTrendModal(type) {
   titleEl.textContent = title + ' (' + companies.length + '개사)';
   if (companies.length === 0) {
     body.innerHTML = '<div style="padding:30px;text-align:center;color:#6B7A94">해당 내역이 없습니다</div>';
-  } else {
-    var total = companies.reduce(function(s, c) { return s + c.amount; }, 0);
-    // 거래처를 클릭하면 바로 원장으로 넘어가지 않고, 옆에 그 거래처의 인보이스별 상세 내역
-    // 팝업을 하나 더 띄운다(openTrendDetail). 원장 이동은 그 상세 팝업 안에서 한다.
-    var rows = companies.map(function(c) {
-      return '<tr><td class="ledger-link" style="cursor:pointer" onclick="openTrendDetail(\'' + c.name.replace(/'/g, "\\'") + '\')">' + c.name + '</td>' +
-        '<td>' + formatDate(c.oldestDate) + (c.count > 1 ? ' 외' : '') + '</td>' +
-        '<td>' + c.count + '건</td>' +
-        '<td style="text-align:right;font-weight:700">' + formatAmountFull(c.amount) + '</td></tr>';
-    }).join('');
-    body.innerHTML = '<table class="ledger-table"><thead><tr><th>거래처</th><th>매출일</th><th>건수</th><th style="text-align:right">미수금</th></tr></thead>' +
-      '<tbody>' + rows + '</tbody>' +
-      '<tfoot><tr class="ledger-foot"><td colspan="3">합계</td><td style="text-align:right">' + formatAmountFull(total) + '</td></tr></tfoot></table>';
+    return;
   }
+  var total = companies.reduce(function(s, c) { return s + c.amount; }, 0);
+  // 거래처를 클릭하면 바로 원장으로 넘어가지 않고, 옆에 그 거래처의 인보이스별 상세 내역
+  // 팝업을 하나 더 띄운다(openTrendDetail). 원장 이동은 그 상세 팝업 안에서 한다.
+  var rows = companies.map(function(c) {
+    return '<tr><td class="ledger-link" style="cursor:pointer" onclick="openTrendDetail(\'' + c.name.replace(/'/g, "\\'") + '\')">' + c.name + '</td>' +
+      '<td>' + formatDate(c.oldestDate) + (c.count > 1 ? ' 외' : '') + '</td>' +
+      '<td>' + c.count + '건</td>' +
+      '<td style="text-align:right;font-weight:700">' + formatAmountFull(c.amount) + '</td></tr>';
+  }).join('');
+  body.innerHTML = '<table class="ledger-table"><thead><tr><th>거래처</th><th>매출일</th><th>건수</th><th style="text-align:right">미수금</th></tr></thead>' +
+    '<tbody>' + rows + '</tbody>' +
+    '<tfoot><tr class="ledger-foot"><td colspan="3">합계</td><td style="text-align:right">' + formatAmountFull(total) + '</td></tr></tfoot></table>';
+}
+
+function openTrendModal(type) {
+  var backdrop = document.getElementById('trend-modal-backdrop');
+  if (!backdrop) return;
+
+  currentTrendModalType = type;
+  closeTrendDetail();
+
+  var list = trendModalLists[type] || [];
+  var title = type === 'due' ? '당월 수금 예정 거래처' : '지연 미수금 거래처';
+  renderCompanyListModal(title, list);
+  backdrop.classList.add('show');
+}
+
+// ── 담당자별 미수금 순위에서 담당자를 클릭하면 뜨는 거래처별 미수금 모달
+//    (당월수금예정/지연미수금과 같은 모달 UI를 그대로 재사용, 순위 리스트의 결제조건
+//    미니 필터(rankPaytype)를 그대로 적용해서 목록도 같은 기준으로 보여준다) ──
+function openManagerRankModal(managerName) {
+  var backdrop = document.getElementById('trend-modal-backdrop');
+  if (!backdrop) return;
+  closeTrendDetail();
+
+  var list = DATA.records.filter(function(r) {
+    if (r.manager !== managerName) return false;
+    if (r.misooamt === 0) return false;
+    if (rankPaytype !== "전체" && r.paytype !== rankPaytype) return false;
+    return true;
+  });
+  var modalKey = 'mgr:' + managerName;
+  trendModalLists[modalKey] = list;
+  currentTrendModalType = modalKey;
+
+  var title = managerName + ' 담당 미수 거래처' + (rankPaytype !== "전체" ? ' · ' + rankPaytype : '');
+  renderCompanyListModal(title, list);
   backdrop.classList.add('show');
 }
 
@@ -1213,7 +1243,7 @@ function renderManagerRankList(managers) {
   }).join('') + '</div>';
 
   var rowsHtml = withColor.map(function(m, i) {
-    return '<div class="manager-rank-row">' +
+    return '<div class="manager-rank-row" onclick="openManagerRankModal(\'' + m.name.replace(/'/g, "\\'") + '\')">' +
       '<span class="manager-rank-rank">' + (i + 1) + '</span>' +
       '<span class="manager-rank-dot" style="background:' + m.color + '"></span>' +
       '<span class="manager-rank-name">' + m.name + '</span>' +

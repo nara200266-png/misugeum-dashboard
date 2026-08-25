@@ -219,8 +219,10 @@ body {
   padding: 7px 0;
   border-top: 1px solid var(--테두리);
   font-size: 12px;
+  cursor: pointer;
 }
 .manager-rank-row:first-child { border-top: none; }
+.manager-rank-row:hover .manager-rank-name { text-decoration: underline; }
 .manager-rank-rank { flex-shrink: 0; width: 14px; font-size: 10px; font-weight: 700; color: var(--회색글자); }
 .manager-rank-dot { flex-shrink: 0; width: 8px; height: 8px; border-radius: 50%; }
 .manager-rank-name { flex: 1; min-width: 0; font-weight: 600; color: var(--글자색); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
