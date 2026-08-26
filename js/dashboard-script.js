@@ -17,7 +17,7 @@
   - renderDepositTable(q)    : 최근 입금내역 표 렌더 (기본 최근 7일, 최신순)
   - toggleAll()              : 전체 펼치기/접기
   - renderCharts()           : 차트 렌더
-  - renderManagerRankList()  : 담당자별 미수금 순위 리스트 렌더 (액수 큰 순)
+  - renderManagerRankList()  : 담당자별 미수금 리스트 렌더 (MANAGER_RANK_ORDER 직급순 고정)
   - selectRankPaytype(idx)   : 순위 리스트 전용 결제조건 미니 필터 선택
   - openManagerRankModal(name) : 순위 리스트에서 담당자 클릭 시 거래처별 미수금 모달 표시
   - showLedger(companyName)  : 거래처 클릭 시 오른쪽 원장 표시
@@ -1197,6 +1197,10 @@ function closeLedger() {
 //    구버전"인 상태에서 정의되지 않은 변수를 참조해 전체 렌더링이 멈추는 문제가 생길 수 있다.
 var MANAGER_COLOR_OVERRIDE = { "송동열": "#29B6F6" };
 
+// ── "담당자별 미수금" 리스트 표시 순서 - 미수금 액수가 아니라 직급순으로 고정.
+//    이 목록에 없는 담당자가 나중에 추가되면 맨 뒤에 붙는다. ──
+var MANAGER_RANK_ORDER = ["전선준", "김근우", "김금식", "송유현", "허성무", "염하린", "송동열"];
+
 // 캔버스를 재사용하지 않고 통째로 새 <canvas>로 갈아끼운다(destroy 후 같은 캔버스에 새 차트를
 // 만드는 것보다 확실하게 이전 상태를 지운다). 그리고 Chart.js의 반응형(컨테이너 크기를 JS로
 // 측정해서 캔버스 해상도를 맞추는) 방식은 담당자 필터로 컨테이너가 display:none ↔ 표시를
@@ -1217,7 +1221,7 @@ function freshCanvas(id, w, h) {
 var rankPaytype = "전체";
 var lastRankManagers = null;
 
-// ── 담당자별 미수금 순위 리스트 (도넛 차트 대신, 액수 큰 순서로 담당자명+미수총액을 나열) ──
+// ── 담당자별 미수금 리스트 (도넛 차트 대신, 직급순 고정 순서로 담당자명+미수총액을 나열) ──
 function renderManagerRankList(managers) {
   var el = document.getElementById("manager-rank-list");
   if (!el) return;
@@ -1235,7 +1239,12 @@ function renderManagerRankList(managers) {
   var withColor = managers.map(function(m, i) {
     return { name: m.name, amount: amountByManager[m.name] || 0, color: MANAGER_COLOR_OVERRIDE[m.name] || CHART_COLORS[i % CHART_COLORS.length] };
   });
-  withColor.sort(function(a, b) { return b.amount - a.amount; });
+  // 금액이 아니라 MANAGER_RANK_ORDER(직급순)로 고정 정렬 - 목록에 없는 담당자는 맨 뒤로
+  withColor.sort(function(a, b) {
+    var ai = MANAGER_RANK_ORDER.indexOf(a.name); if (ai === -1) ai = MANAGER_RANK_ORDER.length;
+    var bi = MANAGER_RANK_ORDER.indexOf(b.name); if (bi === -1) bi = MANAGER_RANK_ORDER.length;
+    return ai - bi;
+  });
 
   var paytypes = ["전체", "7일이내 결제", "월말결제", "익월 10일결제", "익월말"];
   var filterHtml = '<div class="rank-filter-bar">' + paytypes.map(function(p, i) {
