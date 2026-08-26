@@ -70,7 +70,12 @@ body {
   width: 50%;
   padding: 20px 24px;
   border-left: 1px solid var(--테두리);
-  background: var(--흰색);
+  /* 카드(흰색)와 패널 배경이 똑같이 흰색이면 그림자만으로는 경계가 잘 안 보여서
+     왼쪽 패널처럼 은은한 회색 배경을 깔아 카드가 도드라지게 한다. */
+  background: var(--배경색);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 .filter-bar {
   background: var(--흰색);
@@ -166,7 +171,8 @@ body {
   background: var(--흰색);
   border-radius: 12px;
   padding: 16px;
-  box-shadow: 0 1px 4px rgba(27,58,107,.07);
+  border: 1px solid var(--테두리);
+  box-shadow: 0 2px 6px rgba(27,58,107,.08);
   flex: 1;
   min-width: 0;
 }
@@ -638,7 +644,8 @@ body {
   background: var(--흰색);
   border-radius: 12px;
   padding: 18px 20px;
-  box-shadow: 0 1px 4px rgba(27,58,107,.07);
+  border: 1px solid var(--테두리);
+  box-shadow: 0 2px 6px rgba(27,58,107,.08);
 }
 .trend-widget-title { font-size: 13px; font-weight: 700; color: var(--글자색); }
 .trend-widget-sub { font-size: 11px; color: var(--회색글자); margin-top: 2px; margin-bottom: 14px; }
