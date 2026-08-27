@@ -23,6 +23,7 @@
   - selectRankPaytype(idx)   : 순위 리스트 전용 결제조건 미니 필터 선택
   - openManagerRankModal(name) : 순위 리스트에서 담당자 클릭 시 거래처별 미수금 모달 표시
   - showLedger(companyName)  : 거래처 클릭 시 오른쪽 원장 표시
+  - toggleLedgerSubtotal(kind) : 원장의 일별/월별 소계 표시 토글 (두 뷰 공통)
   - closeLedger()            : 원장 닫기
   - formatAmount(n)          : 숫자 포맷 (억/만원)
   - formatAmountFull(n)      : 숫자 포맷 (전체 원 단위)
@@ -896,7 +897,11 @@ var ledgerState = {
   company: null,
   viewMode: 'combined',   // 'split' = 매출/입금 분리, 'combined' = 날짜순 통합 (기본값)
   dateFrom: '',
-  dateTo: ''
+  dateTo: '',
+  // 일별/월별 소계 표시 여부 - 매출/입금 분리, 날짜순 통합 두 뷰에 공통으로 적용된다.
+  // 날짜순 통합 뷰가 원래 월별 소계를 항상 보여주던 것과 같은 기본값을 유지.
+  subtotalDaily: false,
+  subtotalMonthly: true
 };
 
 // ── 거래처 클릭 → 원장 표시 ──
@@ -968,6 +973,13 @@ function renderLedger() {
   html += '<button class="ledger-date-reset" onclick="setLedgerDateThisMonth()">당월</button>';
   html += '<button class="ledger-date-reset" onclick="setLedgerDateLastMonth()">지난달</button>';
   html += '</div>';
+
+  // 소계 표시 토글 - 매출/입금 분리, 날짜순 통합 두 뷰 모두에 그대로 적용됨
+  html += '<div class="ledger-date-filter">';
+  html += '<span class="ledger-date-label">소계 표시</span>';
+  html += '<button class="ledger-date-reset' + (ledgerState.subtotalDaily ? ' active' : '') + '" onclick="toggleLedgerSubtotal(\'daily\')">일별 소계</button>';
+  html += '<button class="ledger-date-reset' + (ledgerState.subtotalMonthly ? ' active' : '') + '" onclick="toggleLedgerSubtotal(\'monthly\')">월별 소계</button>';
+  html += '</div>';
   html += '</div>'; // ledger-header 끝
 
   // ── 합계 카드 ──
@@ -995,6 +1007,48 @@ function renderLedger() {
   rightPanel.style.display = "block";
 }
 
+// ── 일별/월별 소계 삽입 공통 헬퍼. 이미 날짜순 정렬된 items를 훑으면서 날짜/월이
+//    바뀔 때마다(ledgerState.subtotalDaily/subtotalMonthly가 켜져 있을 때만) 그 구간의
+//    소계 행을 끼워 넣는다. rowFn(item)은 그 항목의 표 행 HTML을, subtotalFn(label, group, kind)은
+//    소계 행 HTML을 반환해야 한다(kind: 'day' | 'month' - CSS로 진하기를 다르게 준다).
+//    매출/입금 분리 뷰(각 표를 따로)와 날짜순 통합 뷰(매출+입금을 합친 하나의 타임라인)가
+//    똑같은 로직을 공유하도록 여기 한 곳에만 둔다. ──
+function buildRowsWithSubtotals(items, dateFn, rowFn, subtotalFn) {
+  var out = '';
+  var dayBuf = [], curDay = null, curDayLabel = '';
+  var monthBuf = [], curYM = null, curYMLabel = '';
+
+  function flushDay() {
+    if (ledgerState.subtotalDaily && dayBuf.length) out += subtotalFn(curDayLabel + ' 소계', dayBuf, 'day');
+    dayBuf = [];
+  }
+  function flushMonth() {
+    if (ledgerState.subtotalMonthly && monthBuf.length) out += subtotalFn(curYMLabel + ' 소계', monthBuf, 'month');
+    monthBuf = [];
+  }
+
+  items.forEach(function(item) {
+    var serial = dateFn(item);
+    var ym = serialToYM(serial);
+    var ymKey = ym.y + '-' + ym.m;
+
+    // 월이 바뀔 때는 그 전에 먼저 마지막 날짜의 일별 소계부터 찍고(순서상 자연스럽게),
+    // 그다음 월별 소계를 찍는다.
+    if (curDay !== null && serial !== curDay) flushDay();
+    if (curYM !== null && ymKey !== curYM) flushMonth();
+
+    curDay = serial; curDayLabel = formatDate(serial);
+    curYM = ymKey; curYMLabel = ym.y + '년 ' + ym.m + '월';
+
+    out += rowFn(item);
+    dayBuf.push(item);
+    monthBuf.push(item);
+  });
+  flushDay();
+  flushMonth(); // 마지막 구간은 다음 경계가 없어서 루프 종료 후 별도로 찍어줌
+  return out;
+}
+
 // ── 매출/입금 분리 뷰 ──
 // records: 매출(인보이스) 목록 - 행 단위로 그대로 표시
 // deposits: 입금 목록 - 실제 입금 건수만큼 행으로 표시 (매출 건수와 무관)
@@ -1002,8 +1056,7 @@ function renderLedgerSplit(records, deposits) {
   // 매출 행 (미수금(AF열) 부호로 완납/미수/조정 판정 - 왼쪽 패널과 동일한 값을 그대로 씀)
   // AF열이 마이너스인 행은 반품/과입금 상계 같은 조정 건이라 "완납"이 아니라 실제 마이너스
   // 금액을 그대로 보여줘야 한다(전에는 <=0이면 전부 "완납"으로 표시해서 조정 내역이 안 보였음).
-  var saleRows = '';
-  records.forEach(function(r) {
+  function saleRowHtml(r) {
     var badge, rowCls, amtHtml;
     if (r.misooamt > 0) {
       badge = '<span class="ledger-badge unpaid">미수</span>';
@@ -1018,27 +1071,44 @@ function renderLedgerSplit(records, deposits) {
       rowCls = '';
       amtHtml = '<span style="color:#0F7B52">완납</span>';
     }
-    saleRows += '<tr class="' + rowCls + '">';
-    saleRows += '<td>' + formatDate(r.saledate) + '</td>';
-    saleRows += '<td>' + (r.origin || '-') + ' / ' + (r.product || '-') + ' ' + badge + '</td>';
-    saleRows += '<td style="text-align:right">' + formatAmountFull(r.saleamt) + '</td>';
-    saleRows += '<td style="text-align:right;font-weight:500">' + amtHtml + '</td>';
-    saleRows += '</tr>';
-  });
+    return '<tr class="' + rowCls + '">' +
+      '<td>' + formatDate(r.saledate) + '</td>' +
+      '<td>' + (r.origin || '-') + ' / ' + (r.product || '-') + ' ' + badge + '</td>' +
+      '<td style="text-align:right">' + formatAmountFull(r.saleamt) + '</td>' +
+      '<td style="text-align:right;font-weight:500">' + amtHtml + '</td>' +
+      '</tr>';
+  }
+  function saleSubtotalHtml(label, group, kind) {
+    var sale  = group.reduce(function(s, r) { return s + r.saleamt; }, 0);
+    var misoo = group.reduce(function(s, r) { return s + r.misooamt; }, 0);
+    return '<tr class="ledger-row subtotal ' + kind + '">' +
+      '<td colspan="2">' + label + '</td>' +
+      '<td style="text-align:right">' + formatAmountFull(sale) + '</td>' +
+      '<td style="text-align:right">' + formatAmountFull(misoo) + '</td>' +
+      '</tr>';
+  }
+  var saleRows = records.length === 0
+    ? '<tr><td colspan="4" style="text-align:center;padding:20px;color:#6B7A94">매출 내역 없음</td></tr>'
+    : buildRowsWithSubtotals(records, function(r) { return r.saledate; }, saleRowHtml, saleSubtotalHtml);
 
   // 입금 행 (실제 입금 건별로 1행씩)
-  var paidRows = '';
-  if (deposits.length === 0) {
-    paidRows = '<tr><td colspan="3" style="text-align:center;padding:20px;color:#6B7A94">입금 내역 없음</td></tr>';
-  } else {
-    deposits.forEach(function(d) {
-      paidRows += '<tr class="ledger-row deposit">';
-      paidRows += '<td>' + formatDate(d.date) + '</td>';
-      paidRows += '<td>' + depositSourceLabel(d.source) + '</td>';
-      paidRows += '<td style="text-align:right;color:#0F7B52;font-weight:500">' + formatAmountFull(d.amount) + '</td>';
-      paidRows += '</tr>';
-    });
+  function depositRowHtml(d) {
+    return '<tr class="ledger-row deposit">' +
+      '<td>' + formatDate(d.date) + '</td>' +
+      '<td>' + depositSourceLabel(d.source) + '</td>' +
+      '<td style="text-align:right;color:#0F7B52;font-weight:500">' + formatAmountFull(d.amount) + '</td>' +
+      '</tr>';
   }
+  function depositSubtotalHtml(label, group, kind) {
+    var paid = group.reduce(function(s, d) { return s + d.amount; }, 0);
+    return '<tr class="ledger-row subtotal ' + kind + '">' +
+      '<td colspan="2">' + label + '</td>' +
+      '<td style="text-align:right;color:#0F7B52">' + formatAmountFull(paid) + '</td>' +
+      '</tr>';
+  }
+  var paidRows = deposits.length === 0
+    ? '<tr><td colspan="3" style="text-align:center;padding:20px;color:#6B7A94">입금 내역 없음</td></tr>'
+    : buildRowsWithSubtotals(deposits, function(d) { return d.date; }, depositRowHtml, depositSubtotalHtml);
 
   var totalSale  = records.reduce(function(s,r){return s+r.saleamt;},0);
   var totalMisoo = records.reduce(function(s,r){return s+r.misooamt;},0);
@@ -1077,39 +1147,11 @@ function renderLedgerCombined(records, deposits) {
   deposits.forEach(function(d) { items.push({ type: 'deposit', date: d.date, d: d }); });
   items.sort(function(a, b) { return a.date - b.date; });
 
-  var rows = '';
-  // 날짜순 통합 뷰는 매출/입금이 뒤섞여 쭉 나열되기만 해서, 월이 바뀌는 경계마다 그 달의
-  // 매출·입금·미수 소계를 한 줄로 보여주는 요약 행을 끼워 넣는다(실무자가 월별 마감을
-  // 한눈에 확인하려는 목적). curYM(현재 누적 중인 월)이 바뀌는 순간 그 이전 달 소계를 먼저
-  // 찍고 누적값을 리셋하는 방식 - 마지막 달은 경계가 없어서 루프가 끝난 뒤 한 번 더 찍어준다.
-  var curYM = null, curYMLabel = '';
-  var mSale = 0, mPaid = 0, mMisoo = 0;
-  function flushMonthSubtotal() {
-    if (curYM === null) return;
-    rows += '<tr class="ledger-row subtotal">';
-    rows += '<td colspan="5">' + curYMLabel + ' 소계</td>';
-    rows += '<td style="text-align:right">' + formatAmountFull(mSale) + '</td>';
-    rows += '<td style="text-align:right">' + formatAmountFull(mPaid) + '</td>';
-    rows += '<td style="text-align:right">' + formatAmountFull(mMisoo) + '</td>';
-    rows += '</tr>';
-  }
-
-  items.forEach(function(item) {
-    var ym = serialToYM(item.date);
-    var ymKey = ym.y + '-' + ym.m;
-    if (curYM !== null && ymKey !== curYM) {
-      flushMonthSubtotal();
-      mSale = 0; mPaid = 0; mMisoo = 0;
-    }
-    curYM = ymKey;
-    curYMLabel = ym.y + '년 ' + ym.m + '월';
-
+  // AF열(미수금) 부호로 완납/미수/조정 판정 - 마이너스는 반품·과입금 상계 같은 조정 건이라
+  // "완납"이 아니라 실제 마이너스 금액을 그대로 보여준다.
+  function itemRowHtml(item) {
     if (item.type === 'sale') {
       var r = item.r;
-      mSale += r.saleamt;
-      mMisoo += r.misooamt;
-      // AF열(미수금) 부호로 완납/미수/조정 판정 - 마이너스는 반품·과입금 상계 같은 조정 건이라
-      // "완납"이 아니라 실제 마이너스 금액을 그대로 보여준다.
       var badge, misooColor, misooText;
       if (r.misooamt > 0) {
         badge = '<span class="ledger-badge unpaid">미수</span>';
@@ -1122,32 +1164,45 @@ function renderLedgerCombined(records, deposits) {
         misooColor = '#0F7B52'; misooText = '완납';
       }
       var rowCls = r.misooamt > 0 ? 'ledger-row unpaid' : '';
-      rows += '<tr class="' + rowCls + '">';
-      rows += '<td>' + formatDate(r.saledate) + '</td>';
-      rows += '<td>' + (r.origin || '-') + '</td>';
-      rows += '<td>' + (r.product || '-') + ' ' + badge + '</td>';
-      rows += '<td style="text-align:center">' + formatAmountFull(r.unitprice) + '</td>';
-      rows += '<td style="text-align:center">' + (r.qty || 0).toLocaleString('ko-KR') + '</td>';
-      rows += '<td style="text-align:right">' + formatAmountFull(r.saleamt) + '</td>';
-      rows += '<td style="text-align:right">-</td>';
-      rows += '<td style="text-align:right;color:' + misooColor + ';font-weight:500">' + misooText + '</td>';
-      rows += '</tr>';
-    } else {
-      var d = item.d;
-      mPaid += d.amount;
-      rows += '<tr class="ledger-row deposit">';
-      rows += '<td>' + formatDate(d.date) + '</td>';
-      rows += '<td>-</td>';
-      rows += '<td>입금 ' + depositSourceLabel(d.source) + '</td>';
-      rows += '<td style="text-align:center">-</td>';
-      rows += '<td style="text-align:center">-</td>';
-      rows += '<td style="text-align:right">-</td>';
-      rows += '<td style="text-align:right;color:#0F7B52;font-weight:500">' + formatAmountFull(d.amount) + '</td>';
-      rows += '<td style="text-align:right">-</td>';
-      rows += '</tr>';
+      return '<tr class="' + rowCls + '">' +
+        '<td>' + formatDate(r.saledate) + '</td>' +
+        '<td>' + (r.origin || '-') + '</td>' +
+        '<td>' + (r.product || '-') + ' ' + badge + '</td>' +
+        '<td style="text-align:center">' + formatAmountFull(r.unitprice) + '</td>' +
+        '<td style="text-align:center">' + (r.qty || 0).toLocaleString('ko-KR') + '</td>' +
+        '<td style="text-align:right">' + formatAmountFull(r.saleamt) + '</td>' +
+        '<td style="text-align:right">-</td>' +
+        '<td style="text-align:right;color:' + misooColor + ';font-weight:500">' + misooText + '</td>' +
+        '</tr>';
     }
-  });
-  flushMonthSubtotal(); // 마지막 달은 다음 경계가 없어서 루프 종료 후 별도로 찍어줌
+    var d = item.d;
+    return '<tr class="ledger-row deposit">' +
+      '<td>' + formatDate(d.date) + '</td>' +
+      '<td>-</td>' +
+      '<td>입금 ' + depositSourceLabel(d.source) + '</td>' +
+      '<td style="text-align:center">-</td>' +
+      '<td style="text-align:center">-</td>' +
+      '<td style="text-align:right">-</td>' +
+      '<td style="text-align:right;color:#0F7B52;font-weight:500">' + formatAmountFull(d.amount) + '</td>' +
+      '<td style="text-align:right">-</td>' +
+      '</tr>';
+  }
+  function itemSubtotalHtml(label, group, kind) {
+    var sale = 0, paid = 0, misoo = 0;
+    group.forEach(function(item) {
+      if (item.type === 'sale') { sale += item.r.saleamt; misoo += item.r.misooamt; }
+      else { paid += item.d.amount; }
+    });
+    return '<tr class="ledger-row subtotal ' + kind + '">' +
+      '<td colspan="5">' + label + '</td>' +
+      '<td style="text-align:right">' + formatAmountFull(sale) + '</td>' +
+      '<td style="text-align:right">' + formatAmountFull(paid) + '</td>' +
+      '<td style="text-align:right">' + formatAmountFull(misoo) + '</td>' +
+      '</tr>';
+  }
+  var rows = items.length === 0
+    ? '<tr><td colspan="8" style="text-align:center;padding:20px;color:#6B7A94">내역 없음</td></tr>'
+    : buildRowsWithSubtotals(items, function(item) { return item.date; }, itemRowHtml, itemSubtotalHtml);
 
   var totalSale  = records.reduce(function(s,r){return s+r.saleamt;},0);
   var totalPaid  = deposits.reduce(function(s,d){return s+d.amount;},0);
@@ -1189,6 +1244,14 @@ function dateToSerial(dateStr) {
 // ── 뷰 모드 변경 ──
 function setLedgerView(mode) {
   ledgerState.viewMode = mode;
+  renderLedger();
+}
+
+// ── 소계 표시 토글 ('daily' | 'monthly') - 매출/입금 분리, 날짜순 통합 두 뷰 모두에
+//    같은 상태가 그대로 적용된다. 원하는 대로 둘 다 켜거나, 하나만 켜거나, 둘 다 끌 수 있다. ──
+function toggleLedgerSubtotal(kind) {
+  if (kind === 'daily') ledgerState.subtotalDaily = !ledgerState.subtotalDaily;
+  else if (kind === 'monthly') ledgerState.subtotalMonthly = !ledgerState.subtotalMonthly;
   renderLedger();
 }
 
