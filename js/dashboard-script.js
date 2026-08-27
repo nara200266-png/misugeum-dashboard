@@ -17,8 +17,7 @@
   - renderTable()            : 미수 테이블 렌더 (담당자/결제조건/위험도가 전부 "전체"면 renderDepositTable로 위임)
   - renderDepositTable(q)    : 최근 입금내역 표 렌더 (기본 최근 7일, 최신순)
   - toggleAll()              : 전체 펼치기/접기
-  - openTablePopup()         : 미수 상세내역을 큰 팝업으로 전부 펼쳐서 보기
-  - closeTablePopup()        : 미수 상세내역 팝업 닫기
+  - openTablePopup()         : 미수 상세내역을 거래처별 목록 팝업으로 한눈에 보기
   - renderCharts()           : 차트 렌더
   - renderManagerRankList()  : 담당자별 미수금 리스트 렌더 (MANAGER_RANK_ORDER 직급순 고정)
   - selectRankPaytype(idx)   : 순위 리스트 전용 결제조건 미니 필터 선택
@@ -133,30 +132,21 @@ function init() {
   if (btn && isAllExpanded) btn.textContent = "▲ 전체 접기";
 }
 
-// ── 미수 상세내역 팝업용 버튼/모달 DOM을 한 번만 주입.
-//    매크로(fn_레이아웃)를 재생성하지 않아도 이 파일(JS)만 최신으로 받으면 바로 반영되도록,
-//    정적 레이아웃을 건드리는 대신 여기서 직접 DOM에 붙인다(당월수금예정/지연미수금
-//    모달과 같은 방식 - 그쪽도 renderTrendWidget()이 매번 자기 모달 HTML을 직접 그려 넣는다). ──
+// ── 미수 상세내역 팝업 버튼을 한 번만 주입. 매크로(fn_레이아웃)를 재생성하지 않아도
+//    이 파일(JS)만 최신으로 받으면 바로 반영되도록, 정적 레이아웃을 건드리는 대신
+//    여기서 직접 DOM에 붙인다. 팝업 자체는 별도 모달을 새로 만들지 않고 당월수금예정/
+//    지연미수금과 같은 trend-modal-backdrop을 그대로 재사용한다(폭이 좁고 세로로 쭉
+//    읽는 형태라 시선이 좌우로 흩어지지 않음). ──
 function injectTablePopupUI() {
   var controls = document.querySelector('.table-controls');
   if (controls && !document.getElementById('popup-btn')) {
     var btn = document.createElement('button');
     btn.className = 'expand-btn';
     btn.id = 'popup-btn';
-    btn.title = '미수 상세내역을 큰 팝업으로 한 번에 보기';
+    btn.title = '미수 상세내역을 팝업으로 한눈에 보기';
     btn.textContent = '⤢ 팝업으로 보기';
     btn.onclick = openTablePopup;
     controls.insertBefore(btn, controls.firstChild);
-  }
-  if (!document.getElementById('table-popup-backdrop')) {
-    document.body.insertAdjacentHTML('beforeend',
-      '<div class="trend-modal-backdrop" id="table-popup-backdrop">' +
-        '<div class="trend-modal table-popup" onclick="event.stopPropagation()">' +
-          '<div class="trend-modal-header"><span id="table-popup-title"></span>' +
-            '<button class="trend-modal-close" onclick="closeTablePopup()">✕</button></div>' +
-          '<div class="trend-modal-body" id="table-popup-body"></div>' +
-        '</div>' +
-      '</div>');
   }
 }
 
@@ -872,21 +862,29 @@ function toggleAll() {
 //    표만으로는 스크롤이 길어져 한눈에 안 들어온다는 요청으로 추가. #table-body에 이미
 //    그려진 내용을 그대로 복사해 큰 팝업에 띄우되, 그룹 접힘 상태와 무관하게 항상 전부
 //    펼쳐서 보여준다(팝업의 목적 자체가 "한눈에 다 보기"이므로). ──
+// 지금 화면에 걸려있는 담당자/결제조건/위험도/검색어 필터를 그대로 적용해서 거래처별로
+// 묶어 보여준다 (당월수금예정/지연미수금과 완전히 같은 모달·표 형태를 재사용 - 거래처를
+// 클릭하면 openTrendDetail로 인보이스별 상세도 그대로 이어서 볼 수 있다).
 function openTablePopup() {
-  var backdrop = document.getElementById('table-popup-backdrop');
-  var body = document.getElementById('table-popup-body');
-  var titleEl = document.getElementById('table-popup-title');
-  var sourceBody = document.getElementById('table-body');
-  if (!backdrop || !body || !titleEl || !sourceBody) return;
-  titleEl.textContent = document.getElementById('table-title').textContent;
-  body.innerHTML = sourceBody.innerHTML;
-  body.querySelectorAll('.paytype-body').forEach(function(el) { el.classList.remove('collapsed'); });
-  backdrop.classList.add('show');
-}
+  var backdrop = document.getElementById('trend-modal-backdrop');
+  if (!backdrop) return;
+  closeTrendDetail();
 
-function closeTablePopup() {
-  var backdrop = document.getElementById('table-popup-backdrop');
-  if (backdrop) backdrop.classList.remove('show');
+  var searchQuery = document.getElementById("search-box").value.toLowerCase();
+  var list = DATA.records.filter(function(r) {
+    if (r.misooamt === 0) return false;
+    if (filter.manager !== "전체" && r.manager !== filter.manager) return false;
+    if (filter.paytype !== "전체" && r.paytype !== filter.paytype) return false;
+    if (filter.risk !== "전체" && calcRisk(r.saledate, r.paytype).label !== filter.risk) return false;
+    if (searchQuery && r.company.toLowerCase().indexOf(searchQuery) < 0) return false;
+    return true;
+  });
+  var modalKey = 'table-popup';
+  trendModalLists[modalKey] = list;
+  currentTrendModalType = modalKey;
+
+  renderCompanyListModal(document.getElementById('table-title').textContent, list);
+  backdrop.classList.add('show');
 }
 
 // ══════════════════════════════════════════
