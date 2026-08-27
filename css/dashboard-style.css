@@ -739,6 +739,9 @@ body {
   flex-direction: column;
   box-shadow: 0 8px 28px rgba(0,0,0,.22);
 }
+/* 미수 상세내역 팝업(openTablePopup) - 담당자별 미수 건수가 많으면 표가 넓고 길어져서
+   기본 모달(600px)보다 훨씬 크게 잡아 "한눈에" 다 보이도록 한다 */
+.table-popup { width: 96vw; max-width: 1400px; max-height: 88vh; }
 /* 지연/예정 거래처 목록 옆에 여는 인보이스별 상세 팝업 - 기본 숨김, .show일 때만 나란히 노출 */
 .trend-detail-modal { display: none; width: 460px; }
 .trend-detail-modal.show { display: flex; }

@@ -4,6 +4,7 @@
 
   함수 목록:
   - init()                   : 페이지 초기화
+  - injectTablePopupUI()     : 미수 상세내역 팝업 버튼/모달 DOM 주입 (레이아웃 재생성 없이 동작)
   - renderManagerFilter()    : 담당자 필터 버튼 렌더
   - renderPaytypeFilter()    : 결제조건 필터 버튼 렌더
   - renderRiskFilter()       : 위험도 필터 버튼 렌더
@@ -16,6 +17,8 @@
   - renderTable()            : 미수 테이블 렌더 (담당자/결제조건/위험도가 전부 "전체"면 renderDepositTable로 위임)
   - renderDepositTable(q)    : 최근 입금내역 표 렌더 (기본 최근 7일, 최신순)
   - toggleAll()              : 전체 펼치기/접기
+  - openTablePopup()         : 미수 상세내역을 큰 팝업으로 전부 펼쳐서 보기
+  - closeTablePopup()        : 미수 상세내역 팝업 닫기
   - renderCharts()           : 차트 렌더
   - renderManagerRankList()  : 담당자별 미수금 리스트 렌더 (MANAGER_RANK_ORDER 직급순 고정)
   - selectRankPaytype(idx)   : 순위 리스트 전용 결제조건 미니 필터 선택
@@ -120,6 +123,7 @@ function init() {
   document.getElementById("date-badge").textContent = "기준일: " + DATA.today;
   document.getElementById("count-badge").textContent = "총 " + DATA.companies.length + "개 거래처";
   setDefaultDepositDateRange();
+  injectTablePopupUI();
   renderManagerFilter();
   renderPaytypeFilter();
   renderRiskFilter();
@@ -127,6 +131,33 @@ function init() {
   renderFundIssues();
   var btn = document.getElementById("expand-btn");
   if (btn && isAllExpanded) btn.textContent = "▲ 전체 접기";
+}
+
+// ── 미수 상세내역 팝업용 버튼/모달 DOM을 한 번만 주입.
+//    매크로(fn_레이아웃)를 재생성하지 않아도 이 파일(JS)만 최신으로 받으면 바로 반영되도록,
+//    정적 레이아웃을 건드리는 대신 여기서 직접 DOM에 붙인다(당월수금예정/지연미수금
+//    모달과 같은 방식 - 그쪽도 renderTrendWidget()이 매번 자기 모달 HTML을 직접 그려 넣는다). ──
+function injectTablePopupUI() {
+  var controls = document.querySelector('.table-controls');
+  if (controls && !document.getElementById('popup-btn')) {
+    var btn = document.createElement('button');
+    btn.className = 'expand-btn';
+    btn.id = 'popup-btn';
+    btn.title = '미수 상세내역을 큰 팝업으로 한 번에 보기';
+    btn.textContent = '⤢ 팝업으로 보기';
+    btn.onclick = openTablePopup;
+    controls.insertBefore(btn, controls.firstChild);
+  }
+  if (!document.getElementById('table-popup-backdrop')) {
+    document.body.insertAdjacentHTML('beforeend',
+      '<div class="trend-modal-backdrop" id="table-popup-backdrop">' +
+        '<div class="trend-modal table-popup" onclick="event.stopPropagation()">' +
+          '<div class="trend-modal-header"><span id="table-popup-title"></span>' +
+            '<button class="trend-modal-close" onclick="closeTablePopup()">✕</button></div>' +
+          '<div class="trend-modal-body" id="table-popup-body"></div>' +
+        '</div>' +
+      '</div>');
+  }
 }
 
 // ── 담당자 필터 버튼 렌더 ──
@@ -701,6 +732,7 @@ function buildTopBadDebtHtml() {
 function renderTable() {
   var searchQuery = document.getElementById("search-box").value.toLowerCase();
   var expandBtn = document.getElementById("expand-btn");
+  var popupBtn = document.getElementById("popup-btn");
   var colHeader = document.querySelector(".column-header");
   var dateFilterEl = document.getElementById("deposit-date-filter");
   var isAllFilter = filter.manager === "전체" && filter.paytype === "전체" && filter.risk === "전체";
@@ -709,6 +741,7 @@ function renderTable() {
     // 필터가 전부 "전체"일 때는 미수내역 대신 최근 입금내역을 보여줌
     setKpiText("table-title", "최근 입금내역");
     if (expandBtn) expandBtn.style.display = "none";
+    if (popupBtn) popupBtn.style.display = "none";
     if (colHeader) colHeader.style.display = "none";
     if (dateFilterEl) {
       dateFilterEl.style.display = "flex";
@@ -719,6 +752,7 @@ function renderTable() {
   }
 
   if (expandBtn) expandBtn.style.display = "";
+  if (popupBtn) popupBtn.style.display = "";
   if (colHeader) colHeader.style.display = "";
   if (dateFilterEl) dateFilterEl.style.display = "none";
   setKpiText("table-title", filter.manager === "전체" ? "전체 미수내역" : filter.manager + " 담당 미수내역");
@@ -832,6 +866,27 @@ function toggleAll() {
   document.querySelectorAll('.paytype-body').forEach(function(el) {
     if (isAllExpanded) el.classList.remove("collapsed"); else el.classList.add("collapsed");
   });
+}
+
+// ── 미수 상세내역 팝업으로 크게 보기 - 미수 건수가 많은 담당자는 페이지에 끼워 넣은
+//    표만으로는 스크롤이 길어져 한눈에 안 들어온다는 요청으로 추가. #table-body에 이미
+//    그려진 내용을 그대로 복사해 큰 팝업에 띄우되, 그룹 접힘 상태와 무관하게 항상 전부
+//    펼쳐서 보여준다(팝업의 목적 자체가 "한눈에 다 보기"이므로). ──
+function openTablePopup() {
+  var backdrop = document.getElementById('table-popup-backdrop');
+  var body = document.getElementById('table-popup-body');
+  var titleEl = document.getElementById('table-popup-title');
+  var sourceBody = document.getElementById('table-body');
+  if (!backdrop || !body || !titleEl || !sourceBody) return;
+  titleEl.textContent = document.getElementById('table-title').textContent;
+  body.innerHTML = sourceBody.innerHTML;
+  body.querySelectorAll('.paytype-body').forEach(function(el) { el.classList.remove('collapsed'); });
+  backdrop.classList.add('show');
+}
+
+function closeTablePopup() {
+  var backdrop = document.getElementById('table-popup-backdrop');
+  if (backdrop) backdrop.classList.remove('show');
 }
 
 // ══════════════════════════════════════════
