@@ -332,21 +332,25 @@ function applyFilters() {
     nameEl.textContent = filter.manager;
   }
 
-  // 장기 미회수 채권: 담당자/결제조건 필터 범위 안에서 위험도가 "정상"이 아닌(주의/위험/심각) 채권 합계
-  // (위험도 필터 버튼 선택과 무관하게 항상 이 기준으로 계산)
+  // 장기 미회수 채권: 담당자/결제조건 필터 범위 안에서 위험도가 "정상"이 아닌(주의/위험/심각)
+  // 건들 중 매출일이 가장 오래된(가장 급한) 건을 찾고, 그 "거래처 한 곳"의 미수금 합계를
+  // 보여준다(위험도 필터 버튼 선택과 무관하게 항상 이 기준으로 계산). 예전엔 전체 거래처를
+  // 합친 총액을 보여줬는데, 아래 라벨(거래처/날짜)이 그 총액의 출처처럼 보여 헷갈린다는
+  // 지적이 있어 - 라벨에 나온 그 거래처의 금액만 정확히 일치하도록 바꿨다.
   var longOverdueRecords = DATA.records.filter(function(r) {
     if (filter.manager !== "전체" && r.manager !== filter.manager) return false;
     if (filter.paytype !== "전체" && r.paytype !== filter.paytype) return false;
     return r.misooamt > 0 && calcRisk(r.saledate, r.paytype).level !== "normal";
   });
-  var longOverdueTotal = longOverdueRecords.reduce(function(s, r) { return s + r.misooamt; }, 0);
-  setKpiText("kpi-longoverdue-amount", formatAmount(longOverdueTotal));
-
-  // 하단 요약: 건수 대신, 가장 오래 묵은(매출일이 가장 이른) 건의 업체명/매출일을 표시
   var oldestOverdue = null;
   longOverdueRecords.forEach(function(r) {
     if (!oldestOverdue || r.saledate < oldestOverdue.saledate) oldestOverdue = r;
   });
+  var longOverdueTotal = oldestOverdue
+    ? longOverdueRecords.filter(function(r) { return r.company === oldestOverdue.company; })
+        .reduce(function(s, r) { return s + r.misooamt; }, 0)
+    : 0;
+  setKpiText("kpi-longoverdue-amount", formatAmount(longOverdueTotal));
   setKpiText("kpi-longoverdue-count", oldestOverdue ? (oldestOverdue.company + " / " + formatDate(oldestOverdue.saledate)) : '-');
   setKpiText("table-title", filter.manager === "전체" ? "전체 미수내역" : filter.manager + " 담당 미수내역");
   var isAll = filter.manager === "전체";
