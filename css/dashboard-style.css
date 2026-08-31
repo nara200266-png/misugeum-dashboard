@@ -145,8 +145,10 @@ body {
 .status-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
 .status-sep { color: var(--회색글자); font-size: 13px; }
 .kpi-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  /* 4개 카드가 다 같은 너비일 필요 없이, 내용 길이만큼만 차지하고 남는 공간은
+     자연스럽게 줄바꿈되게 grid 대신 flex-wrap을 쓴다. */
+  display: flex;
+  flex-wrap: wrap;
   gap: 14px;
   margin-bottom: 20px;
 }
@@ -156,6 +158,9 @@ body {
   padding: 18px 20px;
   box-shadow: 0 1px 4px rgba(27,58,107,.07);
   border-left: 4px solid var(--네이비);
+  flex: 0 1 auto;
+  width: fit-content;
+  min-width: 150px;
 }
 .kpi-card.orange { border-left-color: var(--주황); }
 .kpi-card.red { border-left-color: var(--빨강); }
@@ -447,6 +452,17 @@ body {
   white-space: nowrap;
 }
 .ledger-close:hover { background: #FDEDEB; color: var(--빨강); border-color: #E8B4AE; }
+.ledger-pdf-btn {
+  background: var(--흰색);
+  border: 1px solid #C5D5EE;
+  color: var(--네이비);
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.ledger-pdf-btn:hover { background: #EEF3FB; }
 
 /* 합계 카드 */
 .ledger-summary {
@@ -499,19 +515,21 @@ body {
 .ledger-table tbody tr { border-top: 1px solid var(--테두리); }
 .ledger-table td { padding: 6px 10px; white-space: nowrap; }
 
-/* 행 상태별 배경색 */
-.ledger-row.deposit { background: rgba(15,123,82,.08); }
-.ledger-row.partial  { background: #FFFDE7; }
-.ledger-row.unpaid   { background: rgba(192,57,43,.04); }
+/* 행 상태별 배경색 - 원장이 길어지면 원색이 눈을 피로하게 해서, 색상 대신 무채색
+   음영 단계로만 구분한다(진할수록 주의가 필요한 상태: 미입금 > 부분입금 > 입금완료). */
+.ledger-row.deposit { background: rgba(27,58,107,.025); }
+.ledger-row.partial  { background: rgba(27,58,107,.06); }
+.ledger-row.unpaid   { background: rgba(27,58,107,.04); }
 /* 원장 소계 행(일별/월별 - 매출/입금 분리, 날짜순 통합 두 뷰 공통) - 위아래 상세
    내역과 섞이지 않도록 뚜렷하게 구분. 월별 소계를 더 진하게, 일별 소계는 한 단계
    옅게 둬서 자주 나오는 일별 소계가 화면을 너무 무겁게 만들지 않도록 한다. */
 .ledger-row.subtotal {
-  background: #F8F9FA;
+  background: #EEF1F5;
   font-weight: 700;
   border-top: 2px solid var(--테두리);
   border-bottom: 2px solid var(--테두리);
 }
+.ledger-row.subtotal td { padding-top: 9px; padding-bottom: 9px; }
 .ledger-row.subtotal td:first-child { color: var(--네이비); }
 .ledger-row.subtotal.day {
   background: #FBFBFC;
@@ -519,6 +537,7 @@ body {
   border-top: 1px solid var(--테두리);
   border-bottom: 1px solid var(--테두리);
 }
+.ledger-row.subtotal.day td { padding-top: 6px; padding-bottom: 6px; }
 .ledger-row.subtotal.day td:first-child { color: var(--회색글자); }
 
 /* 뱃지 */
@@ -855,8 +874,8 @@ body {
   .status-label, .status-tag { font-size: 10px; }
 
   /* KPI 카드 4개 → 강제 1줄(4열), 캡처용으로 폰트·여백 극단 축소 */
-  .kpi-grid { grid-template-columns: repeat(4, 1fr); gap: 4px; }
-  .kpi-card { padding: 6px 5px; border-left-width: 3px; }
+  .kpi-grid { flex-wrap: nowrap; gap: 4px; }
+  .kpi-card { flex: 1 1 0; min-width: 0; width: auto; padding: 6px 5px; border-left-width: 3px; }
   .kpi-value { font-size: 12px; letter-spacing: -0.5px; }
   .kpi-value.large { font-size: 12px; }
   .kpi-title { font-size: 7px; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -938,4 +957,16 @@ body {
 
   .trend-modal { width: 92vw; }
   .trend-modal-body { padding: 4px 12px 14px; }
+}
+
+/* ── 원장 PDF 다운로드 (window.print() → "PDF로 저장") - 화면 전용 요소(필터/버튼/왼쪽
+   패널 전체)는 감추고 원장 표만 인쇄되게 한다. 별도 라이브러리 없이 브라우저 인쇄
+   기능만으로 처리하므로 파일 구조는 그대로 유지된다. ── */
+@media print {
+  body { background: #fff; }
+  .header, .left-panel, .print-hide,
+  #fund-issue-card, #chart-placeholder, #chart-all, #chart-manager { display: none !important; }
+  .right-panel { width: 100%; border-left: none; padding: 0; background: #fff; }
+  .ledger-wrap { box-shadow: none; }
+  .chart-card, .ledger-header, .ledger-summary, .ledger-table-wrap { box-shadow: none; border: 1px solid var(--테두리); }
 }

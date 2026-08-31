@@ -23,6 +23,7 @@
   - selectRankPaytype(idx)   : 순위 리스트 전용 결제조건 미니 필터 선택
   - openManagerRankModal(name) : 순위 리스트에서 담당자 클릭 시 거래처별 미수금 모달 표시
   - showLedger(companyName)  : 거래처 클릭 시 오른쪽 원장 표시
+  - printLedger()            : 원장을 브라우저 인쇄(→ PDF로 저장)로 내보냄
   - toggleLedgerSubtotal(kind) : 원장의 일별/월별 소계 표시 토글 (두 뷰 공통)
   - closeLedger()            : 원장 닫기
   - formatAmount(n)          : 숫자 포맷 (억/만원)
@@ -30,6 +31,8 @@
   - formatDate(serial)       : 엑셀 날짜 시리얼 → YYYY-MM-DD
   - calcRisk(serial, paytype): 위험도 계산
   - renderFundIssues()       : 자금 특이사항(과입금/선입금) 렌더 - 필터와 무관하게 항상 표시
+  - injectOutstandingListUI(): "미수 업체 리스트" 검색창+영역을 최근입금내역 아래에 1회 주입
+  - renderOutstandingList()  : 미수 업체 리스트 렌더 (액수 큰 순, 거래처명 검색 반영)
   - setLedgerDateThisMonth() : 원장 기간 필터 빠른 선택 - 당월 1일~말일
   - setLedgerDateLastMonth() : 원장 기간 필터 빠른 선택 - 지난달 1일~말일
   - renderTrendWidget()      : 원장 대기화면에 이번달/지난달 매출·입금 증감 위젯 표시 - 좌측 필터에 반응
@@ -124,11 +127,13 @@ function init() {
   document.getElementById("count-badge").textContent = "총 " + DATA.companies.length + "개 거래처";
   setDefaultDepositDateRange();
   injectTablePopupUI();
+  injectOutstandingListUI();
   renderManagerFilter();
   renderPaytypeFilter();
   renderRiskFilter();
   applyFilters();
   renderFundIssues();
+  renderOutstandingList();
   var btn = document.getElementById("expand-btn");
   if (btn && isAllExpanded) btn.textContent = "▲ 전체 접기";
 }
@@ -149,6 +154,60 @@ function injectTablePopupUI() {
     btn.onclick = openTablePopup;
     controls.insertBefore(btn, controls.firstChild);
   }
+}
+
+// ── "최근 입금내역" 표(.table-container) 바로 아래에 "미수 업체 리스트" + 검색창을
+//    한 번만 주입한다. 위 injectTablePopupUI()와 같은 이유로 정적 레이아웃(매크로)을
+//    건드리지 않고 JS만으로 붙인다. ──
+function injectOutstandingListUI() {
+  if (document.getElementById('outstanding-list-body')) return;
+  var anchor = document.querySelector('.left-panel .table-container');
+  if (!anchor) return;
+  var wrap = document.createElement('div');
+  wrap.className = 'table-container';
+  wrap.innerHTML =
+    '<div class="table-header">' +
+      '<span class="table-title">미수 업체 리스트</span>' +
+      '<div class="table-controls">' +
+        '<input class="search-box" id="outstanding-search-box" placeholder="거래처명 검색..." oninput="renderOutstandingList()">' +
+      '</div>' +
+    '</div>' +
+    '<div id="outstanding-list-body"></div>';
+  anchor.insertAdjacentElement('afterend', wrap);
+}
+
+// ── 미수 업체 리스트 렌더 - DATA.companies(현재 미수금이 남은 거래처 전체)를 액수 큰
+//    순으로 보여주고, 검색창으로 거래처명을 필터링한다. 좌측 담당자/결제조건/위험도
+//    필터와는 무관하게 항상 전체 미수 거래처를 대상으로 한다(거래처를 찾는 용도이므로). ──
+function renderOutstandingList() {
+  var body = document.getElementById('outstanding-list-body');
+  var searchEl = document.getElementById('outstanding-search-box');
+  if (!body || !searchEl) return;
+  var q = searchEl.value.toLowerCase().trim();
+  var companies = (DATA.companies || []).slice()
+    .filter(function(c) { return !q || (c.name || '').toLowerCase().indexOf(q) >= 0; })
+    .sort(function(a, b) { return b.amount - a.amount; });
+
+  if (companies.length === 0) {
+    body.innerHTML = '<div style="padding:20px;text-align:center;color:#6B7A94;font-size:12px">해당하는 거래처가 없습니다</div>';
+    return;
+  }
+  var rows = companies.map(function(c) {
+    return '<tr>' +
+      '<td class="ledger-link" style="cursor:pointer" onclick="showLedger(\'' + (c.name || '').replace(/'/g, "\\'") + '\')">' + c.name + '</td>' +
+      '<td>' + (c.manager || '-') + '</td>' +
+      '<td>' + (c.paytype || '-') + '</td>' +
+      '<td style="text-align:right;font-weight:700;color:var(--빨강)">' + formatAmountFull(c.amount) + '</td>' +
+    '</tr>';
+  }).join('');
+  body.innerHTML =
+    '<div class="ledger-table-wrap" style="max-height:280px">' +
+      '<table class="ledger-table">' +
+        '<thead><tr><th>거래처</th><th>담당자</th><th>결제조건</th><th style="text-align:right">미수금</th></tr></thead>' +
+        '<tbody>' + rows + '</tbody>' +
+      '</table>' +
+    '</div>' +
+    '<div style="padding:6px 4px 0;font-size:10px;color:var(--회색글자)">총 ' + companies.length + '개사</div>';
 }
 
 // ── 담당자 필터 버튼 렌더 ──
@@ -614,6 +673,38 @@ function formatDateInput(d) {
   return y + '-' + m + '-' + day;
 }
 
+// ── 기간 입력칸에 타이핑한 값을 표준 날짜(YYYY-MM-DD)로 변환.
+//    "260719"(YYMMDD, 20XX년 가정) / "20260719"(YYYYMMDD) / "2026-07-19" 모두 인식.
+//    실제 존재하지 않는 날짜(예: 2/30)나 형식이 안 맞으면 null을 돌려줘서, 호출부가
+//    입력을 무시하고 이전 값을 그대로 유지하게 한다. ──
+function parseFlexibleDateInput(raw) {
+  var s = (raw || '').trim();
+  var y, m, d;
+  if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(s)) {
+    var p = s.split('-');
+    y = parseInt(p[0], 10); m = parseInt(p[1], 10); d = parseInt(p[2], 10);
+  } else {
+    var digits = s.replace(/[^\d]/g, '');
+    if (digits.length === 6) {
+      y = 2000 + parseInt(digits.slice(0, 2), 10);
+      m = parseInt(digits.slice(2, 4), 10);
+      d = parseInt(digits.slice(4, 6), 10);
+    } else if (digits.length === 8) {
+      y = parseInt(digits.slice(0, 4), 10);
+      m = parseInt(digits.slice(4, 6), 10);
+      d = parseInt(digits.slice(6, 8), 10);
+    } else {
+      return null;
+    }
+  }
+  if (m < 1 || m > 12 || d < 1 || d > 31) return null;
+  var dt = new Date(y, m - 1, d);
+  // new Date()는 2/30 같은 존재하지 않는 날짜를 다음 달로 밀어서 "성공"시켜버리므로,
+  // 다시 분해해서 원래 입력한 연/월/일과 정확히 일치하는지 확인한다.
+  if (dt.getFullYear() !== y || dt.getMonth() !== m - 1 || dt.getDate() !== d) return null;
+  return formatDateInput(dt);
+}
+
 // 기본값: 오늘 기준 최근 7일
 function setDefaultDepositDateRange() {
   var p = DATA.today.split('-');
@@ -624,8 +715,12 @@ function setDefaultDepositDateRange() {
 }
 
 function setDepositDate() {
-  depositView.dateFrom = document.getElementById("deposit-date-from").value;
-  depositView.dateTo   = document.getElementById("deposit-date-to").value;
+  // "260719" 같은 6자리 타이핑도 인식 - 못 알아들으면 이전 값 그대로 두고 무시(re-render 시
+  // input이 depositView의 마지막 정상값으로 다시 그려지면서 자연스럽게 원복된다)
+  var from = parseFlexibleDateInput(document.getElementById("deposit-date-from").value);
+  var to   = parseFlexibleDateInput(document.getElementById("deposit-date-to").value);
+  if (from) depositView.dateFrom = from;
+  if (to)   depositView.dateTo   = to;
   renderTable();
 }
 
@@ -635,10 +730,12 @@ function resetDepositDate() {
 }
 
 function buildDepositDateFilterHtml() {
+  // type=date 대신 텍스트 입력으로 바꿔서 "260719"처럼 6자리만 타이핑해도 바로 날짜로
+  // 인식되게 한다(setDepositDate에서 parseFlexibleDateInput으로 파싱).
   return '<span class="ledger-date-label">기간</span>' +
-    '<input type="date" class="ledger-date-input" id="deposit-date-from" value="' + depositView.dateFrom + '" onchange="setDepositDate()">' +
+    '<input type="text" inputmode="numeric" class="ledger-date-input" id="deposit-date-from" value="' + depositView.dateFrom + '" placeholder="YYMMDD" onchange="setDepositDate()">' +
     '<span style="color:var(--회색글자)">~</span>' +
-    '<input type="date" class="ledger-date-input" id="deposit-date-to" value="' + depositView.dateTo + '" onchange="setDepositDate()">' +
+    '<input type="text" inputmode="numeric" class="ledger-date-input" id="deposit-date-to" value="' + depositView.dateTo + '" placeholder="YYMMDD" onchange="setDepositDate()">' +
     '<button class="ledger-date-reset" onclick="resetDepositDate()">최근 7일</button>';
 }
 
@@ -673,7 +770,7 @@ function renderDepositTable(searchQuery) {
   var total = deposits.reduce(function(s, d) { return s + d.amount; }, 0);
 
   // 거래처명 바로 옆에서 금액을 확인할 수 있도록 [입금일→거래처→입금액→출처] 순으로 재배치하고,
-  // 표 폭을 줄여서 생기는 우측 여백에는 '집중 관리 대상(Top 5 악성 미수 거래처)'를 나란히 배치한다.
+  // 표 폭을 줄여서 생기는 우측 여백에는 '집중 관리 대상(Top 10 최장 미회수 거래처)'를 나란히 배치한다.
   var html = '<div class="deposit-split-row">';
   html += '<div class="deposit-table-col"><div class="ledger-table-wrap">';
   html += '<table class="ledger-table">';
@@ -686,29 +783,34 @@ function renderDepositTable(searchQuery) {
   container.innerHTML = html;
 }
 
-// ── 집중 관리 대상: 위험/심각 등급 미수금을 거래처 단위로 합산해 상위 5개사 ──
+// ── 집중 관리 대상: 위험/심각 등급 미수금을 거래처 단위로 합산해, 미회수 기간(경과일)이
+//    가장 긴 순으로 상위 10개사 ──
 function buildTopBadDebtHtml() {
   var byCompany = {};
   DATA.records.forEach(function(r) {
     if (r.misooamt <= 0) return;
     var risk = calcRisk(r.saledate, r.paytype);
     if (risk.level !== "danger" && risk.level !== "critical") return;
-    if (!byCompany[r.company]) byCompany[r.company] = { name: r.company, amount: 0, manager: r.manager };
+    if (!byCompany[r.company]) byCompany[r.company] = { name: r.company, amount: 0, manager: r.manager, maxDays: 0 };
     byCompany[r.company].amount += r.misooamt;
+    // 여러 건 중 가장 오래 묵은(경과일이 가장 큰) 건을 그 거래처의 대표 경과일로 삼는다
+    if (risk.days > byCompany[r.company].maxDays) byCompany[r.company].maxDays = risk.days;
   });
-  var top5 = Object.keys(byCompany).map(function(k) { return byCompany[k]; })
-    .sort(function(a, b) { return b.amount - a.amount; })
-    .slice(0, 5);
+  // 금액순이 아니라 미회수 기간(경과일)이 가장 긴 순 - 오래 묵을수록 먼저 관리해야 하므로
+  var top10 = Object.keys(byCompany).map(function(k) { return byCompany[k]; })
+    .sort(function(a, b) { return b.maxDays - a.maxDays; })
+    .slice(0, 10);
 
   var html = '<div class="baddebt-panel">';
-  html += '<div class="baddebt-title">집중 관리 대상 <span class="baddebt-title-sub">(Top 5 악성 미수 거래처)</span></div>';
-  if (top5.length === 0) {
+  html += '<div class="baddebt-title">집중 관리 대상 <span class="baddebt-title-sub">(Top 10 최장 미회수 거래처)</span></div>';
+  if (top10.length === 0) {
     html += '<div class="baddebt-empty">위험/심각 등급 미수금이 없습니다</div>';
   } else {
-    html += '<table class="baddebt-table"><thead><tr><th>거래처</th><th style="text-align:right">미수금</th><th style="text-align:right">담당자</th></tr></thead><tbody>';
-    top5.forEach(function(c) {
+    html += '<table class="baddebt-table"><thead><tr><th>거래처</th><th style="text-align:right">경과일</th><th style="text-align:right">미수금</th><th style="text-align:right">담당자</th></tr></thead><tbody>';
+    top10.forEach(function(c) {
       html += '<tr>';
       html += '<td class="ledger-link" style="cursor:pointer" onclick="showLedger(\'' + c.name.replace(/'/g, "\\'") + '\')">' + c.name + '</td>';
+      html += '<td style="text-align:right;color:var(--회색글자)">D+' + c.maxDays + '일</td>';
       html += '<td style="text-align:right;font-weight:700;color:var(--빨강)">' + formatAmountFull(c.amount) + '</td>';
       html += '<td style="text-align:right;color:var(--회색글자)">' + (c.manager || '-') + '</td>';
       html += '</tr>';
@@ -910,6 +1012,19 @@ function showLedger(companyName) {
   renderLedger();
 }
 
+// ── 원장 PDF 다운로드 - 별도 라이브러리 없이 브라우저 인쇄 대화상자를 그대로 활용한다.
+//    "PDF로 저장"을 고르면 사실상 PDF 내보내기가 된다. @media print 규칙이 필터/버튼
+//    등 화면 전용 요소를 감추고 원장 표(.ledger-wrap)만 인쇄되게 한다. ──
+function printLedger() {
+  var prevTitle = document.title;
+  document.title = ledgerState.company + ' 원장 ' + DATA.today;
+  window.addEventListener('afterprint', function restoreTitle() {
+    document.title = prevTitle;
+    window.removeEventListener('afterprint', restoreTitle);
+  });
+  window.print();
+}
+
 // ── 원장 렌더링 (뷰 모드/기간 변경 시 재호출) ──
 function renderLedger() {
   var companyName = ledgerState.company;
@@ -954,28 +1069,31 @@ function renderLedger() {
   html += '<div class="ledger-company-name">' + companyName + '</div>';
   html += '<div class="ledger-sub">' + paytype + ' · 담당: ' + manager + '</div>';
   html += '</div>';
+  html += '<div class="print-hide" style="display:flex;gap:6px">';
+  html += '<button class="ledger-pdf-btn" onclick="printLedger()">🖨 PDF 다운로드</button>';
   html += '<button class="ledger-close" onclick="closeLedger()">✕ 닫기</button>';
+  html += '</div>';
   html += '</div>';
 
   // 뷰 모드 탭
-  html += '<div class="ledger-tabs">';
+  html += '<div class="ledger-tabs print-hide">';
   html += '<button class="ledger-tab ' + (ledgerState.viewMode==="split" ? "active" : "") + '" data-mode="split" onclick="setLedgerView(this.dataset.mode)">📊 매출/입금 분리</button>';
   html += '<button class="ledger-tab ' + (ledgerState.viewMode==="combined" ? "active" : "") + '" data-mode="combined" onclick="setLedgerView(this.dataset.mode)">📅 날짜순 통합</button>';
   html += '</div>';
 
   // 기간 필터
-  html += '<div class="ledger-date-filter">';
+  html += '<div class="ledger-date-filter print-hide">';
   html += '<span class="ledger-date-label">기간</span>';
-  html += '<input type="date" class="ledger-date-input" id="ld-from" value="' + ledgerState.dateFrom + '" onchange="setLedgerDate()">';
+  html += '<input type="text" inputmode="numeric" class="ledger-date-input" id="ld-from" value="' + ledgerState.dateFrom + '" placeholder="YYMMDD" onchange="setLedgerDate()">';
   html += '<span style="color:var(--회색글자)">~</span>';
-  html += '<input type="date" class="ledger-date-input" id="ld-to"   value="' + ledgerState.dateTo   + '" onchange="setLedgerDate()">';
+  html += '<input type="text" inputmode="numeric" class="ledger-date-input" id="ld-to"   value="' + ledgerState.dateTo   + '" placeholder="YYMMDD" onchange="setLedgerDate()">';
   html += '<button class="ledger-date-reset" onclick="resetLedgerDate()">전체</button>';
   html += '<button class="ledger-date-reset" onclick="setLedgerDateThisMonth()">당월</button>';
   html += '<button class="ledger-date-reset" onclick="setLedgerDateLastMonth()">지난달</button>';
   html += '</div>';
 
   // 소계 표시 토글 - 매출/입금 분리, 날짜순 통합 두 뷰 모두에 그대로 적용됨
-  html += '<div class="ledger-date-filter">';
+  html += '<div class="ledger-date-filter print-hide">';
   html += '<span class="ledger-date-label">소계 표시</span>';
   html += '<button class="ledger-date-reset' + (ledgerState.subtotalDaily ? ' active' : '') + '" onclick="toggleLedgerSubtotal(\'daily\')">일별 소계</button>';
   html += '<button class="ledger-date-reset' + (ledgerState.subtotalMonthly ? ' active' : '') + '" onclick="toggleLedgerSubtotal(\'monthly\')">월별 소계</button>';
@@ -1255,10 +1373,12 @@ function toggleLedgerSubtotal(kind) {
   renderLedger();
 }
 
-// ── 기간 설정 ──
+// ── 기간 설정 ── ("260719" 같은 6자리 타이핑도 parseFlexibleDateInput으로 인식)
 function setLedgerDate() {
-  ledgerState.dateFrom = document.getElementById('ld-from').value;
-  ledgerState.dateTo   = document.getElementById('ld-to').value;
+  var from = parseFlexibleDateInput(document.getElementById('ld-from').value);
+  var to   = parseFlexibleDateInput(document.getElementById('ld-to').value);
+  if (from) ledgerState.dateFrom = from;
+  if (to)   ledgerState.dateTo   = to;
   renderLedger();
 }
 
@@ -1269,12 +1389,16 @@ function resetLedgerDate() {
   renderLedger();
 }
 
-// ── 빠른 기간 필터: 당월 (이번 달 1일 ~ 말일) ──
+// ── 빠른 기간 필터: 당월 (이번 달 1일 ~ 오늘과 말일 중 더 이른 날짜) ──
+// 말일로 고정하면 아직 안 지난 미래 날짜까지 조회 기간에 잡혀서 "당월"의 의미가
+// 어긋난다(예: 7/20에 클릭했는데 7/31까지 조회됨). 오늘이 이번 달 안이면 오늘까지만.
 function setLedgerDateThisMonth() {
   var p = DATA.today.split('-');
   var y = parseInt(p[0]), m = parseInt(p[1]);
+  var monthEnd = new Date(y, m, 0); // 0일 = 이번 달 말일
+  var today = new Date(y, m - 1, parseInt(p[2]));
   ledgerState.dateFrom = formatDateInput(new Date(y, m - 1, 1));
-  ledgerState.dateTo   = formatDateInput(new Date(y, m, 0)); // 0일 = 이번 달 말일
+  ledgerState.dateTo   = formatDateInput(today < monthEnd ? today : monthEnd);
   renderLedger();
 }
 
